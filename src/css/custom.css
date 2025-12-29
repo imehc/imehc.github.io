@@ -1,4 +1,6 @@
-@import "tailwindcss" prefix(tw);
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(tw) important;
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw) important;
 
 @custom-variant dark (&:is([data-theme="dark"] *));
 
