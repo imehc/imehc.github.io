@@ -1,9 +1,647 @@
 ---
-sidebar_position: 5
+sidebar_position: 7
 title: 聚合
 tags: [Javascript]
 ---
 
 import App from '@site/src/exmaples/web/cesium/basic/07';
 
+# 聚合
+
+本示例展示如何在 Cesium 中实现大规模点位的高性能聚合显示。通过 Supercluster 算法和 Primitive API，可以流畅地渲染和交互成千上万个点位，并根据视角动态聚合。示例生成了 10,000 个随机点，在缩放过程中会自动根据密度聚合或展开。
+
 <App />
+
+## 核心功能
+
+### 点聚合算法
+
+使用 Supercluster 作为聚合引擎：
+
+- **Supercluster**：基于 KD-树的高性能聚合算法
+- **动态聚合**：根据相机高度自动计算 Zoom 级别
+- **视野裁剪**：仅计算和渲染可见范围内的点
+- **实时更新**：相机移动时动态更新聚合结果
+
+### 高性能渲染
+
+采用 Cesium Primitive API 实现极致性能：
+
+- **BillboardCollection**：批量渲染图标，比 Entity API 快 10 倍以上
+- **LabelCollection**：批量渲染文字标签
+- **Canvas 缓存**：预生成并缓存聚合圆圈，避免重复绘制
+- **图片预加载**：提前加载单点图标，消除首次渲染延迟
+
+### 分级样式
+
+根据聚合点数量动态调整样式：
+
+- **颜色分级**：不同数量级使用不同颜色
+- **大小分级**：聚合点越多，圆圈越大
+- **视觉反馈**：清晰区分单点和聚合点
+
+## 关键代码
+
+### 初始化聚合器
+
+创建 PointCluster 实例（viewer.ts）：
+
+```tsx
+import PointCluster from "./point-cluster";
+
+// 生成测试数据：10000个随机点
+const results = randomPointsWithinBbox(-120, -90, 25, 40, 10000, "geojson");
+
+const cluster = new PointCluster({
+  viewer,
+  results,
+  pixelRange: 80,        // 聚合半径（像素）
+  colorItems: [
+    {
+      num: 1,            // 最小数量
+      size: 30,          // 圆圈大小
+      color: "#1c86d1cc", // 蓝色
+    },
+    {
+      num: 50,
+      size: 32,
+      color: "#67c23acc", // 绿色
+    },
+    {
+      num: 100,
+      size: 34,
+      color: "#f56c6ccc", // 红色
+    },
+    {
+      num: 200,
+      size: 36,
+      color: "#e6a23ccc", // 橙色
+    },
+  ],
+  img: "/cesium/07/marker6.png", // 单点图标
+});
+```
+
+### 核心聚合类实现
+
+PointCluster 类的核心架构（point-cluster.ts）：
+
+```tsx
+export default class PointCluster {
+  private viewer: Viewer;
+  private supercluster: Supercluster;
+
+  // Primitive 集合
+  private billboards: BillboardCollection;
+  private labels: LabelCollection;
+
+  // 性能优化
+  private circleCache: Record<string, string> = {};
+  private singlePointImage: HTMLImageElement | undefined;
+  private lastViewRect: string = "";
+
+  constructor(option: PointClusterOption) {
+    // 1. 初始化 Primitive 集合
+    this.billboards = new BillboardCollection({ scene: this.viewer.scene });
+    this.labels = new LabelCollection({ scene: this.viewer.scene });
+    this.viewer.scene.primitives.add(this.billboards);
+    this.viewer.scene.primitives.add(this.labels);
+
+    // 2. 初始化 Supercluster
+    this.supercluster = new Supercluster({
+      radius: this.option.pixelRange,
+      maxZoom: 20,
+    });
+
+    // 3. 预加载单点图标
+    this.preloadSingleImage(this.option.img);
+
+    // 4. 加载数据
+    if (option.results) {
+      this.loadData(option.results);
+    }
+
+    // 5. 绑定实时渲染事件
+    this.bindEvent();
+  }
+}
+```
+
+### 数据加载
+
+支持两种数据格式（point-cluster.ts）：
+
+```tsx
+public loadData(results: GeoJSON | Point[]) {
+  let points: Array<Feature<GeoPoint>> = [];
+
+  // 标准化为 GeoJSON Feature 数组
+  if (Array.isArray(results)) {
+    // 普通点数组 {x, y} 转换为 GeoJSON
+    points = results.map((p) => ({
+      type: "Feature",
+      properties: { ...p },
+      geometry: { type: "Point", coordinates: [p.x, p.y] },
+    }));
+  } else if (results.type === "FeatureCollection") {
+    // 已经是 GeoJSON FeatureCollection
+    points = results.features as Array<Feature<GeoPoint>>;
+  }
+
+  // 载入 Supercluster
+  this.supercluster.load(points);
+
+  // 强制刷新一次
+  this.lastViewRect = "";
+  this.updateView();
+}
+```
+
+### 视图更新优化
+
+避免重复计算的核心逻辑（point-cluster.ts）：
+
+```tsx
+private updateView() {
+  if (!this.option.enable) return;
+
+  // 1. 获取当前视野范围
+  const rect = this.viewer.camera.computeViewRectangle();
+  if (!defined(rect)) return;
+
+  // 2. 性能优化：视野未变化时跳过计算
+  const currentViewKey = `${rect.west.toFixed(5)}_${rect.south.toFixed(5)}_${rect.east.toFixed(5)}_${rect.north.toFixed(5)}_${this.viewer.camera.positionCartographic.height.toFixed(0)}`;
+
+  if (this.lastViewRect === currentViewKey) {
+    return; // 视野没变，直接返回
+  }
+  this.lastViewRect = currentViewKey;
+
+  // 3. 继续更新...
+}
+```
+
+### 聚合点渲染
+
+动态获取并渲染聚合结果（point-cluster.ts）：
+
+```tsx
+// 计算 Zoom 级别
+const height = this.viewer.camera.positionCartographic.height;
+let zoom = Math.floor(this.heightToZoom(height));
+zoom = Math.max(0, Math.min(zoom, 20));
+
+// 计算视野边界
+const bbox: [number, number, number, number] = [
+  CesiumMath.toDegrees(rect.west),
+  CesiumMath.toDegrees(rect.south),
+  CesiumMath.toDegrees(rect.east),
+  CesiumMath.toDegrees(rect.north),
+];
+
+// 获取聚合数据
+const clusters = this.supercluster.getClusters(bbox, zoom);
+
+// 清空并重新渲染
+this.billboards.removeAll();
+this.labels.removeAll();
+
+for (const cluster of clusters) {
+  const [lng, lat] = cluster.geometry.coordinates;
+  const position = Cartesian3.fromDegrees(lng, lat);
+  const isCluster = cluster.properties?.cluster;
+  const count = cluster.properties ? cluster.properties.point_count : 1;
+
+  if (isCluster) {
+    // 渲染聚合点
+    this.renderCluster(position, count);
+  } else {
+    // 渲染单个点
+    this.renderSinglePoint(position);
+  }
+}
+```
+
+### 绘制聚合点
+
+根据点数量选择样式并绘制（point-cluster.ts）：
+
+```tsx
+// 根据数量选择样式
+let styleItem = this.option.colorItems[0];
+for (let i = this.option.colorItems.length - 1; i >= 0; i--) {
+  if (count >= this.option.colorItems[i].num) {
+    styleItem = this.option.colorItems[i];
+    break;
+  }
+}
+
+// 添加背景圆圈
+this.billboards.add({
+  position: position,
+  image: this.getCircleImage(styleItem.size, styleItem.color),
+  width: styleItem.size,
+  height: styleItem.size,
+  verticalOrigin: VerticalOrigin.CENTER,
+  eyeOffset: new Cartesian3(0, 0, 0),
+});
+
+// 添加数字标签
+this.labels.add({
+  position: position,
+  text: String(count),
+  font: 'bold 16px "Microsoft YaHei", sans-serif',
+  style: LabelStyle.FILL,
+  fillColor: Color.WHITE,
+  outlineColor: Color.BLACK,
+  outlineWidth: 2,
+  verticalOrigin: VerticalOrigin.CENTER,
+  horizontalOrigin: HorizontalOrigin.CENTER,
+  pixelOffset: new Cartesian2(0, -1),      // 修正字体基线
+  eyeOffset: new Cartesian3(0, 0, -5),     // 确保在圆圈前面
+  disableDepthTestDistance: Number.POSITIVE_INFINITY, // 禁用深度测试
+  scale: 1.0,
+});
+```
+
+### Canvas 圆圈缓存
+
+避免重复绘制相同的圆圈（point-cluster.ts）：
+
+```tsx
+private getCircleImage(size: number, color: string): string {
+  const key = `${size}_${color}`;
+
+  // 命中缓存直接返回
+  if (this.circleCache[key]) return this.circleCache[key];
+
+  // 绘制新圆圈
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2, true);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.closePath();
+
+  // 缓存并返回
+  const url = canvas.toDataURL();
+  this.circleCache[key] = url;
+  return url;
+}
+```
+
+### 高度转 Zoom 级别
+
+将相机高度映射到聚合 Zoom 级别（point-cluster.ts）：
+
+```tsx
+private heightToZoom(height: number): number {
+  // 经验公式，根据 Web 墨卡托投影调优
+  const A = 40487.57;
+  const B = 0.0000709672;
+  const C = 91610.74;
+  const D = -40467.74;
+  return Math.round(D + (A - D) / (1 + (height / C) ** B));
+}
+```
+
+### 图片预加载
+
+提前加载单点图标避免首次渲染延迟（point-cluster.ts）：
+
+```tsx
+private preloadSingleImage(url: string) {
+  const img = new Image();
+  img.src = url;
+
+  img.onload = () => {
+    this.singlePointImage = img;
+    // 图片加载完成后强制刷新
+    this.lastViewRect = "";
+    this.updateView();
+  };
+
+  img.onerror = () => {
+    console.error("单个点图标加载失败:", url);
+  };
+}
+```
+
+### 生成随机测试数据
+
+生成 GeoJSON 格式的随机点（viewer.ts）：
+
+```tsx
+function randomPointsWithinBbox(
+  xmin: number,
+  xmax: number,
+  ymin: number,
+  ymax: number,
+  num: number,
+  type?: "geojson"
+): GeoJSON | Point[] {
+  if (type === "geojson") {
+    const pointMap: GeoJSON = {
+      type: "FeatureCollection",
+      features: [],
+    };
+
+    for (let i = 0; i < num; i++) {
+      const point = {
+        type: "Feature",
+        properties: {
+          value: parseInt(`${Math.random() * 10000000}`, 10),
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [
+            Math.random() * (xmax - xmin) + xmin,
+            Math.random() * (ymax - ymin) + ymin,
+          ],
+        },
+      };
+      pointMap.features.push(point);
+    }
+
+    return pointMap;
+  } else {
+    // 返回普通点数组
+    return Array.from({ length: num }, () => ({
+      x: Math.random() * (xmax - xmin) + xmin,
+      y: Math.random() * (ymax - ymin) + ymin,
+    }));
+  }
+}
+```
+
+## 应用场景
+
+### 海量设备监控
+- **IoT 设备**：展示成千上万个传感器、摄像头的分布
+- **车辆追踪**：实时展示出租车、物流车辆位置
+- **设备管理**：电力、通信基站的密集分布展示
+
+### 地理数据可视化
+- **POI 展示**：商铺、酒店、景点等兴趣点的大规模展示
+- **统计数据**：人口密度、污染源分布等数据可视化
+- **地震监测**：地震台站、历史地震数据的分布展示
+
+### 业务分析
+- **客户分布**：企业客户、门店的地理分布分析
+- **市场覆盖**：销售网点、服务区域的可视化
+- **竞品分析**：竞争对手门店分布的密度热力分析
+
+## 性能优化技巧
+
+### 使用 Primitive API
+
+对比 Entity API 和 Primitive API 的性能差异：
+
+```tsx
+// ❌ 性能差 - Entity API (10000 点会卡顿)
+for (let i = 0; i < 10000; i++) {
+  viewer.entities.add({
+    position: positions[i],
+    billboard: { image: "icon.png" }
+  });
+}
+
+// ✅ 性能好 - Primitive API (100000 点流畅)
+const collection = new BillboardCollection({ scene: viewer.scene });
+viewer.scene.primitives.add(collection);
+
+for (let i = 0; i < 10000; i++) {
+  collection.add({
+    position: positions[i],
+    image: "icon.png"
+  });
+}
+```
+
+### 视图变化检测
+
+避免静止时重复计算：
+
+```tsx
+// 生成视图唯一标识
+const currentViewKey = `${rect.west.toFixed(5)}_${rect.south.toFixed(5)}_${rect.east.toFixed(5)}_${rect.north.toFixed(5)}_${height.toFixed(0)}`;
+
+// 对比上次视图
+if (this.lastViewRect === currentViewKey) {
+  return; // 视野未变化，跳过计算
+}
+
+this.lastViewRect = currentViewKey;
+```
+
+### Canvas 图像缓存
+
+复用相同的圆圈图像：
+
+```tsx
+// 使用 size + color 作为缓存 key
+private circleCache: Record<string, string> = {};
+
+private getCircleImage(size: number, color: string): string {
+  const key = `${size}_${color}`;
+  if (this.circleCache[key]) {
+    return this.circleCache[key]; // 命中缓存
+  }
+
+  // 未命中，绘制新圆圈
+  const url = this.drawCircle(size, color);
+  this.circleCache[key] = url;
+  return url;
+}
+```
+
+### 图片对象预加载
+
+使用 Image 对象比 URL 字符串性能更好：
+
+```tsx
+// ❌ 性能较差 - 每次传入 URL
+billboard.add({
+  image: "/path/to/icon.png"  // Cesium 内部会重复加载
+});
+
+// ✅ 性能更好 - 预加载 Image 对象
+const img = new Image();
+img.src = "/path/to/icon.png";
+img.onload = () => {
+  this.singlePointImage = img;
+};
+
+// 使用时直接传入 Image 对象
+billboard.add({
+  image: this.singlePointImage
+});
+```
+
+### 视野裁剪
+
+只渲染可见范围内的点：
+
+```tsx
+// 计算当前视野边界
+const rect = this.viewer.camera.computeViewRectangle();
+const bbox: [number, number, number, number] = [
+  CesiumMath.toDegrees(rect.west),
+  CesiumMath.toDegrees(rect.south),
+  CesiumMath.toDegrees(rect.east),
+  CesiumMath.toDegrees(rect.north),
+];
+
+// 只获取可见范围内的聚合点
+const clusters = this.supercluster.getClusters(bbox, zoom);
+```
+
+### 深度测试优化
+
+禁用深度测试确保标签清晰：
+
+```tsx
+this.labels.add({
+  // ...
+  disableDepthTestDistance: Number.POSITIVE_INFINITY, // 永远显示，不被地形遮挡
+  eyeOffset: new Cartesian3(0, 0, -5),  // 确保在圆圈前面
+});
+```
+
+## 常见问题
+
+### 聚合点突然出现/消失
+
+在视野边缘拖动时，点可能会突然出现或消失。
+
+解决方法：增加 `getClusters` 的 padding 参数（会影响性能）：
+
+```tsx
+// 0 表示只计算可见区域
+const clusters = this.supercluster.getClusters(bbox, zoom);
+
+// 可以设置 padding 预加载边缘数据，但会增加计算量
+// const padding = 0.1; // 10% 的边界扩展
+```
+
+### 文字和圆圈没有对齐
+
+Label 和 Billboard 的原点可能不一致。
+
+解决方法：
+
+```tsx
+// Billboard 使用 CENTER 原点
+this.billboards.add({
+  verticalOrigin: VerticalOrigin.CENTER,
+});
+
+// Label 使用相同的 CENTER 原点
+this.labels.add({
+  verticalOrigin: VerticalOrigin.CENTER,
+  horizontalOrigin: HorizontalOrigin.CENTER,
+  pixelOffset: new Cartesian2(0, -1), // 微调基线
+});
+```
+
+### 文字显示模糊
+
+字体渲染可能不清晰。
+
+解决方法：
+
+```tsx
+this.labels.add({
+  font: 'bold 16px "Microsoft YaHei", sans-serif', // 使用清晰字体
+  style: LabelStyle.FILL,  // 或 FILL_AND_OUTLINE
+  outlineWidth: 2,         // 增加描边提高对比度
+  disableDepthTestDistance: Number.POSITIVE_INFINITY, // 禁用深度测试
+});
+```
+
+### 聚合半径不合适
+
+`pixelRange` 设置不当导致聚合过密或过疏。
+
+调优方法：
+
+```tsx
+const cluster = new PointCluster({
+  pixelRange: 80,  // 根据实际需求调整
+  // 40 - 聚合紧密，点较多
+  // 80 - 适中
+  // 120 - 聚合松散，点较少
+});
+```
+
+### 高度转 Zoom 不准确
+
+`heightToZoom` 公式可能不适合你的地图投影。
+
+调优方法：
+
+```tsx
+private heightToZoom(height: number): number {
+  // 可以使用简单的对数公式
+  return Math.log2(40075016.686 / height) - 8;
+
+  // 或者使用查找表
+  const zoomTable = [
+    { height: 20000000, zoom: 3 },
+    { height: 10000000, zoom: 4 },
+    { height: 5000000, zoom: 5 },
+    // ...
+  ];
+  // 插值计算
+}
+```
+
+### 内存占用过高
+
+大量点数据常驻内存。
+
+优化方法：
+
+```tsx
+// 1. 及时清理
+public remove() {
+  this.viewer.scene.primitives.remove(this.billboards);
+  this.viewer.scene.primitives.remove(this.labels);
+  this.circleCache = {}; // 清空缓存
+  this.singlePointImage = undefined;
+}
+
+// 2. 限制数据量
+if (points.length > 100000) {
+  console.warn("数据量过大，建议使用服务端聚合");
+}
+```
+
+## 注意事项
+
+1. **数据格式**：确保输入数据为 GeoJSON 或 `{x, y}` 格式
+2. **坐标系统**：使用 WGS84 经纬度坐标（EPSG:4326）
+3. **聚合半径**：根据数据密度调整 `pixelRange`（40-120）
+4. **性能权衡**：数据量超过 10 万建议使用服务端聚合
+5. **视图更新**：postRender 每帧都会触发，需要优化判断逻辑
+6. **深度测试**：Label 需要禁用深度测试才能保证清晰
+7. **图像缓存**：不同颜色和大小的圆圈都会缓存，注意内存占用
+8. **Zoom 映射**：高度转 Zoom 的公式需根据地图投影微调
+9. **清理资源**：组件销毁时务必清理 Primitive 和缓存
+10. **事件监听**：记得在 remove 时移除 postRender 事件监听
+
+## 参考资料
+
+- [Supercluster 官方文档](https://github.com/mapbox/supercluster)
+- [Cesium BillboardCollection API](https://cesium.com/learn/cesiumjs/ref-doc/BillboardCollection.html)
+- [Cesium LabelCollection API](https://cesium.com/learn/cesiumjs/ref-doc/LabelCollection.html)
+- [Cesium Primitive API](https://cesium.com/learn/cesiumjs/ref-doc/Primitive.html)
+- [GeoJSON 规范](https://geojson.org/)
+- [Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
+- [Cesium Performance Tips](https://cesium.com/learn/cesiumjs-learn/cesiumjs-performance/)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
