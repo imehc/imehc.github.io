@@ -1,0 +1,339 @@
+---
+sidebar_position: 8
+title: CZML 时空数据可视化
+tags: [Javascript]
+---
+
+import App from '@site/src/exmaples/web/cesium/basic/08';
+
+# CZML 时空数据可视化
+
+本示例展示如何在 Cesium 中加载和显示 CZML（Cesium Language）格式的时空数据。CZML 是一种基于 JSON 的时空数据描述语言，专为 Cesium 设计，可以描述动态场景，如卫星轨道、飞行路径、移动对象等。本例通过加载卫星轨道数据，展示 CZML 的强大时空可视化能力。
+
+<App />
+
+## 核心功能
+
+### CZML 数据格式
+
+CZML（Cesium Language）是 Cesium 的原生时空数据格式，具有以下特点：
+
+- **基于 JSON**：易于生成、解析和传输
+- **时空数据**：支持随时间变化的属性和动画
+- **丰富的实体类型**：支持点、线、面、模型、路径等
+- **高效传输**：支持增量更新和流式传输
+- **完整描述**：可描述材质、样式、时间范围等所有可视化属性
+
+### CzmlDataSource
+
+Cesium 提供 `CzmlDataSource` 用于加载和管理 CZML 数据：
+
+- **异步加载**：支持从 URL 或对象加载 CZML
+- **自动解析**：自动解析 CZML 并创建实体
+- **时间控制**：自动配置时钟和时间轴
+- **数据更新**：支持动态更新和增量数据
+
+## 关键代码
+
+### 初始化 Viewer
+
+创建 Cesium Viewer 并配置基础设置（viewer.ts）：
+
+```tsx
+export function initViewer(el: HTMLElement) {
+  const viewer = new Viewer(el, {
+    baseLayerPicker: false,      // 隐藏底图选择器
+    animation: false,            // 隐藏动画控件
+    timeline: false,             // 隐藏时间轴
+    fullscreenButton: false,     // 隐藏全屏按钮
+    geocoder: false,             // 隐藏地理编码搜索框
+    homeButton: false,           // 隐藏主页按钮
+    infoBox: false,              // 隐藏信息框
+    sceneModePicker: false,      // 隐藏场景模式选择器
+    selectionIndicator: false,   // 隐藏选择指示器
+    navigationHelpButton: false, // 隐藏导航帮助按钮
+  });
+
+  viewer.scene.debugShowFramesPerSecond = true; // 显示帧率
+
+  // 配置自定义底图
+  viewer.imageryLayers.remove(viewer.imageryLayers.get(0));
+  const xyz = new UrlTemplateImageryProvider({
+    url: "//data.mars3d.cn/tile/img/{z}/{x}/{y}.jpg",
+  });
+  viewer.imageryLayers.addImageryProvider(xyz);
+
+  // 移除默认地形
+  viewer.scene.terrainProvider = new EllipsoidTerrainProvider({});
+
+  return viewer;
+}
+```
+
+### 加载 CZML 数据
+
+使用 `CzmlDataSource` 加载 CZML 文件：
+
+```tsx
+export async function loadCZML(viewer: Viewer) {
+  // 异步加载 CZML 数据源
+  const czmldata = await CzmlDataSource.load('/cesium/08/wx.czml');
+
+  // 将数据源添加到 Viewer
+  viewer.dataSources.add(czmldata);
+
+  // 启用时钟动画，让场景动起来
+  viewer.clock.shouldAnimate = true;
+}
+```
+
+## CZML 数据结构
+
+### CZML 基本格式
+
+CZML 文件是一个 JSON 数组，第一个元素通常是文档对象：
+
+```json
+[
+  {
+    "id": "document",
+    "name": "CZML Document",
+    "version": "1.0",
+    "clock": {
+      "interval": "2012-03-15T10:00:00Z/2012-03-16T10:00:00Z",
+      "currentTime": "2012-03-15T10:00:00Z",
+      "multiplier": 60,
+      "range": "LOOP_STOP",
+      "step": "SYSTEM_CLOCK_MULTIPLIER"
+    }
+  },
+  {
+    "id": "satellite",
+    "name": "卫星",
+    "availability": "2012-03-15T10:00:00Z/2012-03-16T10:00:00Z",
+    "position": {
+      "epoch": "2012-03-15T10:00:00Z",
+      "cartographicDegrees": [
+        0, -75, 40, 100000,
+        60, -70, 35, 100000,
+        120, -65, 30, 100000
+      ]
+    },
+    "billboard": {
+      "image": "satellite.png",
+      "scale": 1.5
+    },
+    "path": {
+      "material": {
+        "solidColor": {
+          "color": {
+            "rgba": [255, 0, 255, 255]
+          }
+        }
+      },
+      "width": 2
+    }
+  }
+]
+```
+
+### 时间插值
+
+CZML 支持多种时间插值方式：
+
+- **`cartographicDegrees`**：经纬度坐标数组，格式为 `[time, lon, lat, height, ...]`
+- **`cartesian`**：笛卡尔坐标数组
+- **`reference`**：引用其他对象的属性
+- **插值算法**：支持线性、拉格朗日、Hermite 插值
+
+## 应用场景
+
+### 卫星轨道可视化
+- **航天任务规划**：展示卫星轨道、覆盖范围、通信窗口
+- **空间态势感知**：实时监控卫星位置和状态
+- **碰撞预警**：模拟多颗卫星的轨道和潜在碰撞
+- **对地观测**：展示卫星对地观测区域和时间
+
+### 飞行路径模拟
+- **航班追踪**：实时展示飞机的飞行路径和历史轨迹
+- **无人机任务**：规划和展示无人机飞行路线
+- **导弹轨迹**：模拟导弹飞行轨迹和弹道
+- **航线优化**：对比和优化不同飞行路线
+
+### 移动对象追踪
+- **车辆监控**：展示车辆的历史轨迹和实时位置
+- **船舶追踪**：海洋船舶的航行路线和位置
+- **动物迁徙**：野生动物的迁徙路线可视化
+- **人员定位**：救援、巡逻等场景的人员位置追踪
+
+### 时空数据分析
+- **历史回放**：回放历史事件和轨迹
+- **趋势预测**：基于历史数据预测未来轨迹
+- **时空关联**：分析多个移动对象的时空关系
+- **数据可视化**：将时空数据转化为直观的可视化场景
+
+## 性能优化技巧
+
+### CZML 数据优化
+
+1. **减少数据点数量**
+```tsx
+// ❌ 性能差 - 过多的时间点
+"cartographicDegrees": [
+  0, -75, 40, 100000,
+  1, -75.01, 40.01, 100001,
+  2, -75.02, 40.02, 100002,
+  // ... 数千个点
+]
+
+// ✅ 性能好 - 合理的采样率
+"cartographicDegrees": [
+  0, -75, 40, 100000,
+  60, -70, 35, 100000,
+  120, -65, 30, 100000,
+  // ... 适量的关键点，依靠插值
+]
+```
+
+2. **使用参考（Reference）**
+```json
+{
+  "id": "satellite2",
+  "position": {
+    "reference": "satellite1#position"
+  }
+}
+```
+
+3. **增量更新**
+```tsx
+// 不要重新加载整个 CZML，使用增量更新
+const updateCzml = [
+  {
+    "id": "satellite",
+    "position": {
+      // 只更新位置
+      "cartographicDegrees": [...]
+    }
+  }
+];
+await dataSource.process(updateCzml);
+```
+
+### 渲染性能优化
+
+1. **控制可见对象数量**
+```tsx
+// 根据距离显示/隐藏
+entity.billboard.scaleByDistance = new NearFarScalar(
+  1.5e6, 1.0,
+  8.0e6, 0.0
+);
+```
+
+2. **禁用不必要的功能**
+```tsx
+// 如果不需要深度检测
+viewer.scene.globe.depthTestAgainstTerrain = false;
+
+// 如果不需要光照
+viewer.scene.globe.enableLighting = false;
+```
+
+## 常见问题
+
+### CZML 加载失败
+
+确保 CZML 文件路径正确，且格式有效：
+
+```tsx
+try {
+  const czmldata = await CzmlDataSource.load('/cesium/08/wx.czml');
+  viewer.dataSources.add(czmldata);
+} catch (error) {
+  console.error('CZML 加载失败:', error);
+}
+```
+
+### 时间轴不显示
+
+CZML 文档需要包含 `clock` 配置：
+
+```json
+{
+  "id": "document",
+  "version": "1.0",
+  "clock": {
+    "interval": "2012-03-15T10:00:00Z/2012-03-16T10:00:00Z",
+    "currentTime": "2012-03-15T10:00:00Z",
+    "multiplier": 60
+  }
+}
+```
+
+### 动画不播放
+
+确保启用时钟动画：
+
+```tsx
+viewer.clock.shouldAnimate = true;
+
+// 或者设置时钟倍速
+viewer.clock.multiplier = 10; // 10倍速播放
+```
+
+### 路径不显示
+
+确保 CZML 实体包含 `path` 属性：
+
+```json
+{
+  "id": "satellite",
+  "path": {
+    "material": {
+      "solidColor": {
+        "color": {
+          "rgba": [255, 0, 255, 255]
+        }
+      }
+    },
+    "width": 2,
+    "leadTime": 3600,    // 前向轨迹时间（秒）
+    "trailTime": 3600    // 后向轨迹时间（秒）
+  }
+}
+```
+
+### 时间格式错误
+
+CZML 使用 ISO 8601 时间格式：
+
+```tsx
+// ✅ 正确
+"2012-03-15T10:00:00Z"
+"2012-03-15T10:00:00+08:00"
+
+// ❌ 错误
+"2012-03-15 10:00:00"
+"2012/03/15 10:00:00"
+```
+
+## 注意事项
+
+1. **时间格式**：严格使用 ISO 8601 格式（`YYYY-MM-DDTHH:mm:ssZ`）
+2. **坐标系统**：确保坐标使用 WGS84 地理坐标系
+3. **文件大小**：大型 CZML 文件建议分片加载或使用流式传输
+4. **时间范围**：确保 `clock.interval` 覆盖所有实体的时间范围
+5. **性能考虑**：合理控制时间采样率，避免过多数据点
+6. **版本兼容**：使用正确的 CZML 版本（当前推荐 1.0）
+7. **异步加载**：CZML 加载是异步的，注意使用 `async/await`
+8. **内存管理**：不再使用的数据源应及时移除（`viewer.dataSources.remove()`）
+
+## 参考资料
+
+- [CZML 官方文档](https://github.com/AnalyticalGraphicsInc/czml-writer/wiki/CZML-Guide)
+- [CZML 结构参考](https://github.com/AnalyticalGraphicsInc/czml-writer/wiki/CZML-Structure)
+- [CzmlDataSource API](https://cesium.com/learn/cesiumjs/ref-doc/CzmlDataSource.html)
+- [Cesium 时间动态数据](https://cesium.com/learn/cesiumjs-learn/cesiumjs-time-dynamic-data/)
+- [Space-Track TLE 数据目录](https://www.space-track.org/#catalog)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
