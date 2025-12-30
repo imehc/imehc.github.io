@@ -1,0 +1,553 @@
+---
+sidebar_position: 11
+title: 点击获取 3D Tiles 属性
+tags: [Javascript]
+---
+
+import App from '@site/src/exmaples/web/cesium/basic/11';
+
+# 点击获取 3D Tiles 属性
+
+本示例展示如何在 Cesium 中通过鼠标点击获取 3D Tiles 模型的属性信息。通过使用 ScreenSpaceEventHandler 事件处理器和 scene.pick() 方法，可以实现对三维模型的交互查询，获取建筑物名称、高度、用途等属性数据，为智慧城市、数字孪生等应用提供基础交互能力。
+
+<App />
+
+## 核心功能
+
+### 屏幕空间事件处理
+
+ScreenSpaceEventHandler 是 Cesium 提供的屏幕空间事件处理器：
+
+- **鼠标事件**：支持左键、右键、中键点击和双击
+- **触摸事件**：支持移动端的触摸、滑动、缩放等手势
+- **移动事件**：支持鼠标移动、拖拽等交互
+- **滚轮事件**：支持鼠标滚轮缩放
+- **组合事件**：可以同时监听多种事件类型
+
+### 对象拾取（Picking）
+
+Cesium 的 picking 机制用于从屏幕坐标获取场景中的对象：
+
+- **scene.pick()**：拾取屏幕坐标处的对象
+- **scene.drillPick()**：拾取屏幕坐标处的所有对象（多层叠加）
+- **scene.pickPosition()**：获取屏幕坐标对应的世界坐标
+- **精确拾取**：支持 Entity、Primitive、3D Tiles 等多种对象类型
+
+### 3D Tiles 属性
+
+3D Tiles 可以包含丰富的属性信息：
+
+- **要素属性**：每个建筑或对象可以包含多个自定义属性
+- **批次表**：使用 Batch Table 存储大量要素的属性数据
+- **动态访问**：通过 `getProperty()` 方法动态获取属性值
+- **属性类型**：支持字符串、数字、布尔值等多种数据类型
+
+## 关键代码
+
+### 初始化 Viewer
+
+创建 Cesium Viewer 并配置基础设置（viewer.ts）：
+
+```tsx
+export function initViewer(el: HTMLElement) {
+  const viewer = new Viewer(el, {
+    baseLayerPicker: false,      // 隐藏底图选择器
+    animation: false,            // 隐藏动画控件
+    timeline: false,             // 隐藏时间轴
+    fullscreenButton: false,     // 隐藏全屏按钮
+    geocoder: false,             // 隐藏地理编码搜索框
+    homeButton: false,           // 隐藏主页按钮
+    // infoBox: false,           // 保留信息框，用于显示属性
+    sceneModePicker: false,      // 隐藏场景模式选择器
+    // selectionIndicator: false, // 保留选择指示器
+  });
+
+  // 启用深度检测，确保拾取准确性
+  viewer.scene.globe.depthTestAgainstTerrain = true;
+
+  viewer.scene.debugShowFramesPerSecond = true; // 显示帧率
+
+  // 配置自定义底图
+  viewer.imageryLayers.remove(viewer.imageryLayers.get(0));
+  const xyz = new UrlTemplateImageryProvider({
+    url: "//data.mars3d.cn/tile/img/{z}/{x}/{y}.jpg",
+  });
+  viewer.imageryLayers.addImageryProvider(xyz);
+
+  // 移除默认地形
+  viewer.scene.terrainProvider = new EllipsoidTerrainProvider({});
+
+  return viewer;
+}
+```
+
+### 加载 3D Tiles 并设置点击事件
+
+加载 3D Tiles 数据集并监听鼠标点击事件：
+
+```tsx
+export async function loadPointInfo(viewer: Viewer) {
+  // 加载 3D Tiles 数据集
+  const tileset = await Cesium3DTileset.fromUrl(
+    "/cesium/11/buildings/tileset.json"
+  );
+  tileset.debugShowBoundingVolume = true;  // 显示包围盒（调试用）
+  viewer.scene.primitives.add(tileset);
+  viewer.zoomTo(tileset);
+
+  // 创建屏幕空间事件处理器
+  const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+
+  // 设置左键点击事件
+  handler.setInputAction((movement: { position: Cartesian2 }) => {
+    // 拾取点击位置的对象
+    const pickedFeature = viewer.scene.pick(movement.position);
+
+    // 检查是否拾取到对象
+    if (defined(pickedFeature)) {
+      // 打印拾取到的要素对象
+      console.log(pickedFeature);
+
+      // 获取要素的属性
+      console.log(pickedFeature.getProperty("name"));
+
+      // 可以获取其他属性
+      // console.log(pickedFeature.getProperty("height"));
+      // console.log(pickedFeature.getProperty("type"));
+    }
+  }, ScreenSpaceEventType.LEFT_CLICK);
+}
+```
+
+### 获取和显示多个属性
+
+完整的属性获取和显示示例：
+
+```tsx
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  const pickedFeature = viewer.scene.pick(movement.position);
+
+  if (defined(pickedFeature)) {
+    // 获取所有属性名称
+    const propertyNames = pickedFeature.getPropertyIds();
+
+    console.log("要素属性：");
+    propertyNames.forEach((propertyName: string) => {
+      const value = pickedFeature.getProperty(propertyName);
+      console.log(`${propertyName}: ${value}`);
+    });
+
+    // 或者创建自定义信息面板
+    const name = pickedFeature.getProperty("name") || "未命名";
+    const height = pickedFeature.getProperty("height") || "未知";
+    const type = pickedFeature.getProperty("type") || "未知";
+
+    // 显示属性信息（可以用 HTML 创建自定义面板）
+    showInfoPanel({
+      名称: name,
+      高度: `${height} 米`,
+      类型: type,
+    });
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+```
+
+### 高亮选中的要素
+
+点击时高亮显示选中的建筑：
+
+```tsx
+let lastPickedFeature: any = undefined;
+
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  const pickedFeature = viewer.scene.pick(movement.position);
+
+  // 恢复上一个选中要素的颜色
+  if (defined(lastPickedFeature)) {
+    lastPickedFeature.color = Color.WHITE;
+  }
+
+  if (defined(pickedFeature)) {
+    // 高亮当前选中的要素
+    pickedFeature.color = Color.YELLOW;
+    lastPickedFeature = pickedFeature;
+
+    // 获取属性
+    const name = pickedFeature.getProperty("name");
+    console.log(`选中建筑: ${name}`);
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+```
+
+### 使用 drillPick 获取多个对象
+
+当多个对象重叠时，获取所有对象：
+
+```tsx
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  // drillPick 返回点击位置的所有对象（从前到后）
+  const pickedObjects = viewer.scene.drillPick(movement.position);
+
+  if (pickedObjects.length > 0) {
+    console.log(`点击位置有 ${pickedObjects.length} 个对象`);
+
+    pickedObjects.forEach((pickedObject, index) => {
+      if (defined(pickedObject.getProperty)) {
+        const name = pickedObject.getProperty("name");
+        console.log(`对象 ${index + 1}: ${name}`);
+      }
+    });
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+```
+
+### 获取点击位置的世界坐标
+
+除了获取属性，还可以获取点击位置的坐标：
+
+```tsx
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  // 获取点击位置的世界坐标（笛卡尔坐标）
+  const cartesian = viewer.scene.pickPosition(movement.position);
+
+  if (defined(cartesian)) {
+    // 转换为经纬度坐标
+    const cartographic = Cartographic.fromCartesian(cartesian);
+    const longitude = CesiumMath.toDegrees(cartographic.longitude);
+    const latitude = CesiumMath.toDegrees(cartographic.latitude);
+    const height = cartographic.height;
+
+    console.log(`经度: ${longitude.toFixed(6)}°`);
+    console.log(`纬度: ${latitude.toFixed(6)}°`);
+    console.log(`高度: ${height.toFixed(2)} 米`);
+  }
+
+  // 同时获取点击的要素
+  const pickedFeature = viewer.scene.pick(movement.position);
+  if (defined(pickedFeature)) {
+    const name = pickedFeature.getProperty("name");
+    console.log(`建筑名称: ${name}`);
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+```
+
+## 应用场景
+
+### 智慧城市管理
+- **建筑信息查询**：点击建筑查看名称、用途、高度、建造年份等信息
+- **设施管理**：查询市政设施、管网设施的属性和状态
+- **规划审批**：展示规划方案中建筑的详细参数
+- **资产管理**：查询和管理城市建筑资产信息
+
+### 数字孪生
+- **设备监控**：点击设备查看实时运行状态、参数、告警信息
+- **故障定位**：快速定位故障设备并查看详细信息
+- **巡检管理**：记录巡检点信息和巡检历史
+- **能耗分析**：查看各建筑或设备的能耗数据
+
+### 房地产展示
+- **楼盘展示**：点击楼栋查看户型、价格、朝向等信息
+- **虚拟看房**：展示房间的详细信息和装修情况
+- **配套查询**：查看周边配套设施的详细信息
+- **投资分析**：展示楼盘的投资回报率、升值潜力等数据
+
+### GIS 分析
+- **空间查询**：点击地物查询属性信息
+- **统计分析**：收集点击的要素进行统计分析
+- **数据采集**：在三维场景中进行数据采集和标注
+- **专题分析**：根据属性进行分类和专题展示
+
+### 文物保护
+- **文物信息**：查询文物的名称、年代、保护级别等信息
+- **修复记录**：查看文物的修复历史和现状
+- **监测数据**：展示文物的监测数据（温湿度、倾斜等）
+- **游客导览**：为游客提供互动式的文物介绍
+
+## 性能优化技巧
+
+### 事件处理优化
+
+1. **避免重复创建 Handler**
+```tsx
+// ❌ 避免：每次都创建新的 handler
+function setupEvents() {
+  const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+  // ...
+}
+
+// ✅ 推荐：复用同一个 handler
+const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+
+// 清理时销毁
+handler.destroy();
+```
+
+2. **使用防抖减少事件触发频率**
+```tsx
+// 对于 MOUSE_MOVE 等高频事件使用防抖
+let debounceTimer: NodeJS.Timeout;
+
+handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    const pickedFeature = viewer.scene.pick(movement.endPosition);
+    // 处理拾取结果
+  }, 100); // 100ms 防抖
+}, ScreenSpaceEventType.MOUSE_MOVE);
+```
+
+### 拾取优化
+
+1. **限制拾取范围**
+```tsx
+// 只拾取特定类型的对象
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  const pickedFeature = viewer.scene.pick(movement.position);
+
+  if (defined(pickedFeature) && pickedFeature instanceof Cesium3DTileFeature) {
+    // 只处理 3D Tiles 要素
+    console.log(pickedFeature.getProperty("name"));
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+```
+
+2. **减少 drillPick 深度**
+```tsx
+// drillPick 可以指定最大深度
+const pickedObjects = viewer.scene.drillPick(
+  movement.position,
+  5  // 最多拾取 5 个对象
+);
+```
+
+### 属性访问优化
+
+1. **缓存属性名称**
+```tsx
+// ❌ 避免：重复调用 getPropertyIds()
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  const pickedFeature = viewer.scene.pick(movement.position);
+  if (defined(pickedFeature)) {
+    pickedFeature.getPropertyIds().forEach((name: string) => {
+      // ...
+    });
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+
+// ✅ 推荐：缓存属性列表
+const propertyNames = ["name", "height", "type"];
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  const pickedFeature = viewer.scene.pick(movement.position);
+  if (defined(pickedFeature)) {
+    propertyNames.forEach((name) => {
+      const value = pickedFeature.getProperty(name);
+      // ...
+    });
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+```
+
+2. **按需获取属性**
+```tsx
+// 只获取需要的属性
+const name = pickedFeature.getProperty("name");
+const height = pickedFeature.getProperty("height");
+
+// 而不是获取所有属性
+// const allProperties = pickedFeature.getPropertyIds().map(...);
+```
+
+## 常见问题
+
+### 点击没有反应
+
+**原因**：深度检测未启用，或点击位置没有对象。
+
+**解决方案**：
+
+```tsx
+// 1. 启用深度检测
+viewer.scene.globe.depthTestAgainstTerrain = true;
+
+// 2. 检查是否拾取到对象
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  const pickedFeature = viewer.scene.pick(movement.position);
+
+  if (!defined(pickedFeature)) {
+    console.log("未拾取到对象");
+    return;
+  }
+
+  console.log("拾取到对象:", pickedFeature);
+}, ScreenSpaceEventType.LEFT_CLICK);
+
+// 3. 确保 3D Tiles 已加载完成
+tileset.readyPromise.then(() => {
+  console.log("3D Tiles 加载完成");
+});
+```
+
+### 获取不到属性
+
+**原因**：3D Tiles 数据中没有该属性，或属性名称错误。
+
+**解决方案**：
+
+```tsx
+// 1. 先获取所有可用的属性名称
+if (defined(pickedFeature)) {
+  const propertyNames = pickedFeature.getPropertyIds();
+  console.log("可用属性:", propertyNames);
+
+  // 2. 检查属性是否存在
+  if (pickedFeature.hasProperty("name")) {
+    const name = pickedFeature.getProperty("name");
+    console.log("名称:", name);
+  } else {
+    console.log("该要素没有 name 属性");
+  }
+}
+```
+
+### 点击穿透
+
+**原因**：对象没有正确的深度信息，或深度检测配置问题。
+
+**解决方案**：
+
+```tsx
+// 1. 启用深度检测
+viewer.scene.globe.depthTestAgainstTerrain = true;
+
+// 2. 对于透明或半透明对象，调整渲染顺序
+tileset.style = new Cesium3DTileStyle({
+  show: true,
+});
+
+// 3. 使用 drillPick 查看是否有多个对象
+const pickedObjects = viewer.scene.drillPick(movement.position);
+console.log(`拾取到 ${pickedObjects.length} 个对象`);
+```
+
+### 事件冲突
+
+**原因**：多个事件处理器或与 Cesium 默认行为冲突。
+
+**解决方案**：
+
+```tsx
+// 1. 移除 Cesium 默认的点击行为
+viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
+  ScreenSpaceEventType.LEFT_CLICK
+);
+viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
+  ScreenSpaceEventType.LEFT_DOUBLE_CLICK
+);
+
+// 2. 确保只创建一个 handler
+// ❌ 避免：创建多个 handler
+const handler1 = new ScreenSpaceEventHandler(viewer.scene.canvas);
+const handler2 = new ScreenSpaceEventHandler(viewer.scene.canvas);
+
+// ✅ 推荐：使用同一个 handler 处理多种事件
+const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+handler.setInputAction(clickHandler, ScreenSpaceEventType.LEFT_CLICK);
+handler.setInputAction(moveHandler, ScreenSpaceEventType.MOUSE_MOVE);
+```
+
+### 高亮效果不明显
+
+**原因**：颜色选择不当或光照影响。
+
+**解决方案**：
+
+```tsx
+// 1. 使用明显的高亮颜色
+pickedFeature.color = Color.YELLOW;
+// 或使用带透明度的颜色
+pickedFeature.color = Color.YELLOW.withAlpha(0.8);
+
+// 2. 调整光照模型
+tileset.luminanceAtZenith = 0.5;
+
+// 3. 使用轮廓线效果（PostProcessStage）
+const silhouette = PostProcessStageLibrary.createEdgeDetectionStage();
+viewer.scene.postProcessStages.add(silhouette);
+```
+
+### 性能问题
+
+**原因**：事件触发频率过高或属性访问过于频繁。
+
+**解决方案**：
+
+```tsx
+// 1. 对 MOUSE_MOVE 使用防抖
+let debounceTimer: NodeJS.Timeout;
+handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    // 处理移动事件
+  }, 200);
+}, ScreenSpaceEventType.MOUSE_MOVE);
+
+// 2. 减少 drillPick 深度
+const pickedObjects = viewer.scene.drillPick(movement.position, 3);
+
+// 3. 缓存属性值
+const propertyCache = new Map();
+if (!propertyCache.has(pickedFeature)) {
+  const name = pickedFeature.getProperty("name");
+  propertyCache.set(pickedFeature, name);
+}
+```
+
+### 坐标转换错误
+
+**原因**：pickPosition 在某些情况下返回 undefined。
+
+**解决方案**：
+
+```tsx
+handler.setInputAction((movement: { position: Cartesian2 }) => {
+  // 先尝试 pickPosition
+  let cartesian = viewer.scene.pickPosition(movement.position);
+
+  // 如果失败，使用 camera.pickEllipsoid
+  if (!defined(cartesian)) {
+    cartesian = viewer.camera.pickEllipsoid(
+      movement.position,
+      viewer.scene.globe.ellipsoid
+    );
+  }
+
+  if (defined(cartesian)) {
+    const cartographic = Cartographic.fromCartesian(cartesian);
+    // 使用坐标...
+  } else {
+    console.log("无法获取坐标");
+  }
+}, ScreenSpaceEventType.LEFT_CLICK);
+```
+
+## 注意事项
+
+1. **深度检测**：点击拾取功能依赖深度缓冲，务必启用 `depthTestAgainstTerrain`
+2. **事件清理**：组件销毁时记得调用 `handler.destroy()` 释放资源
+3. **异步加载**：3D Tiles 是异步加载的，确保数据加载完成后再进行交互
+4. **属性存在性**：使用 `hasProperty()` 检查属性是否存在，避免访问不存在的属性
+5. **事件优先级**：自定义 handler 会覆盖 Cesium 的默认行为，注意处理冲突
+6. **性能考虑**：高频事件（如 MOUSE_MOVE）要使用防抖或节流
+7. **移动端适配**：移动端使用触摸事件（如 `PINCH_START`），而非鼠标事件
+8. **坐标系统**：pickPosition 返回的是笛卡尔坐标，需要转换为经纬度
+9. **对象类型**：不同类型的对象（Entity、Primitive、3DTiles）拾取方式略有不同
+10. **内存泄漏**：避免创建多个 handler 而不销毁，会导致内存泄漏
+
+## 参考资料
+
+- [Cesium ScreenSpaceEventHandler API](https://cesium.com/learn/cesiumjs/ref-doc/ScreenSpaceEventHandler.html)
+- [Cesium Picking 教程](https://cesium.com/learn/cesiumjs-learn/cesiumjs-picking/)
+- [Cesium 3D Tiles Feature API](https://cesium.com/learn/cesiumjs/ref-doc/Cesium3DTileFeature.html)
+- [ScreenSpaceEventType 枚举](https://cesium.com/learn/cesiumjs/ref-doc/ScreenSpaceEventType.html)
+- [Scene.pick API](https://cesium.com/learn/cesiumjs/ref-doc/Scene.html#pick)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
