@@ -1,0 +1,10 @@
+[project]
+name = "examples"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "skyfield>=1.48",
+    "sgp4>=2.23",
+]
