@@ -1,0 +1,369 @@
+---
+sidebar_position: 9
+title: 3D 模型加载与地形贴合
+tags: [Javascript]
+---
+
+import App from '@site/src/exmaples/web/cesium/basic/09';
+
+# 3D 模型加载与地形贴合
+
+本示例展示如何在 Cesium 中加载 GLTF/GLB 格式的 3D 模型，并确保模型正确贴合真实地形。示例包含两个场景：风车阵列和建筑，通过 dat.gui 控制面板可以切换不同的模型场景。重点演示了地形提供者的使用和模型的精确定位。
+
+<App />
+
+## 核心功能
+
+### GLTF 模型格式
+
+GLTF（GL Transmission Format）是 Khronos Group 制定的 3D 模型标准格式：
+
+- **开放标准**：跨平台、跨引擎的 3D 资产传输格式
+- **高效传输**：紧凑的文件格式，支持二进制（GLB）和 JSON 格式
+- **完整支持**：包含几何、材质、纹理、动画、骨骼等完整信息
+- **PBR 材质**：原生支持基于物理的渲染（PBR）材质
+- **动画支持**：支持骨骼动画、变形动画等
+
+### 地形提供者（TerrainProvider）
+
+Cesium 支持多种地形提供者，用于显示真实的地形起伏：
+
+- **EllipsoidTerrainProvider**：光滑的椭球体地形（默认）
+- **CesiumTerrainProvider**：高精度地形数据（推荐）
+- **支持地形贴合**：模型高度值可精确匹配地形高度
+
+### 模型定位与方向
+
+使用 `HeadingPitchRoll` 和四元数精确控制模型的位置和姿态：
+
+- **Heading**：方位角（0-360°），顺时针从北开始
+- **Pitch**：俯仰角（-90° 到 90°）
+- **Roll**：横滚角（-180° 到 180°）
+
+## 关键代码
+
+### 初始化 Viewer
+
+创建 Cesium Viewer 并配置基础设置（viewer.ts）：
+
+```tsx
+export function initViewer(el: HTMLElement) {
+  const viewer = new Viewer(el, {
+    baseLayerPicker: false,      // 隐藏底图选择器
+    animation: false,            // 隐藏动画控件
+    timeline: false,             // 隐藏时间轴
+    fullscreenButton: false,     // 隐藏全屏按钮
+    geocoder: false,             // 隐藏地理编码搜索框
+    homeButton: false,           // 隐藏主页按钮
+    infoBox: false,              // 隐藏信息框
+    sceneModePicker: false,      // 隐藏场景模式选择器
+    selectionIndicator: false,   // 隐藏选择指示器
+    navigationHelpButton: false, // 隐藏导航帮助按钮
+  });
+
+  viewer.scene.debugShowFramesPerSecond = true; // 显示帧率
+
+  // 配置自定义底图
+  viewer.imageryLayers.remove(viewer.imageryLayers.get(0));
+  const xyz = new UrlTemplateImageryProvider({
+    url: "//data.mars3d.cn/tile/img/{z}/{x}/{y}.jpg",
+  });
+  viewer.imageryLayers.addImageryProvider(xyz);
+
+  // 移除默认地形（稍后根据场景需要加载真实地形）
+  viewer.scene.terrainProvider = new EllipsoidTerrainProvider({});
+
+  return { viewer, gui };
+}
+```
+
+### 加载风车模型（带地形）
+
+加载多个风车模型并使用真实地形：
+
+```tsx
+async function loadFengcheModel(viewer: Viewer) {
+  removeEntities(viewer);
+
+  // 先加载真实地形
+  const terrainProvider = await CesiumTerrainProvider.fromUrl(
+    "//data.mars3d.cn/terrain",
+  );
+  viewer.terrainProvider = terrainProvider;
+
+  // 设置相机视角
+  viewer.camera.setView({
+    destination: Cartesian3.fromDegrees(112.245269, 39.066518, 2913),
+    orientation: {
+      heading: CesiumMath.toRadians(226),
+      pitch: CesiumMath.toRadians(-21),
+      roll: 0.0,
+    },
+  });
+
+  // 遍历位置数组，添加风车模型
+  positions.forEach((item) => {
+    const position = Cartesian3.fromDegrees(item.lng, item.lat, item.alt);
+    const heading = CesiumMath.toRadians(135);
+    const pitch = CesiumMath.toRadians(0);
+    const roll = CesiumMath.toRadians(0);
+
+    const hpr = new HeadingPitchRoll(heading, pitch, roll);
+    const orientation = Transforms.headingPitchRollQuaternion(position, hpr);
+
+    viewer.entities.add({
+      position: position,
+      orientation: orientation,
+      model: {
+        uri: "/cesium/09/fengche/fengche.gltf",
+        scale: 40,
+        runAnimations: true,  // 启用模型动画
+      },
+    });
+  });
+
+  viewer.clock.shouldAnimate = true;  // 启用时钟动画
+  viewer.flyTo(viewer.entities);      // 飞到实体
+}
+```
+
+### 加载建筑模型
+
+加载单个大型建筑模型：
+
+```tsx
+function loadShanghaipudongModel(viewer: Viewer) {
+  removeEntities(viewer);
+
+  const position = Cartesian3.fromDegrees(121.507762, 31.233975, 200);
+  const heading = CesiumMath.toRadians(215);
+  const pitch = CesiumMath.toRadians(0);
+  const roll = CesiumMath.toRadians(0);
+
+  const hpr = new HeadingPitchRoll(heading, pitch, roll);
+  const orientation = Transforms.headingPitchRollQuaternion(position, hpr);
+
+  const entity = viewer.entities.add({
+    position: position,
+    orientation: orientation,
+    model: {
+      uri: "/cesium/09/scene/scene.gltf",
+      scale: 520,
+    },
+  });
+
+  viewer.flyTo(entity);
+}
+```
+
+### 清除实体
+
+在切换场景时清除之前的实体：
+
+```tsx
+function removeEntities(viewer: Viewer) {
+  // 清除所有实体
+  viewer.entities.removeAll();
+}
+```
+
+## 应用场景
+
+### 城市建筑可视化
+- **城市规划**：展示建筑设计方案和城市天际线
+- **房地产展示**：虚拟看房、楼盘展示
+- **智慧城市**：建筑信息模型（BIM）与 GIS 融合
+- **历史建筑**：文物保护、古建筑数字化
+
+### 风力发电场规划
+- **选址规划**：风电场地形地貌分析
+- **视觉影响评估**：模拟风车对景观的影响
+- **运维监控**：实时监控风机状态和运行数据
+- **发电量分析**：结合地形和气象数据分析发电效率
+
+### 基础设施建设
+- **道路桥梁**：交通设施规划和展示
+- **输电线路**：电力设施路径规划
+- **管线管理**：地下管网三维可视化
+- **水利工程**：水库、大坝、河道的 3D 展示
+
+### 工业设施
+- **工厂布局**：工业园区规划
+- **设备管理**：大型设备的空间定位和管理
+- **安全演练**：危险场景模拟和应急预案
+- **数字孪生**：工业设施的数字化镜像
+
+## 性能优化技巧
+
+### 模型优化
+
+1. **减少多边形数量**
+```tsx
+// 使用 LOD（Level of Detail）技术
+// 远距离使用低精度模型，近距离使用高精度模型
+
+// ✅ 推荐：使用优化过的模型
+// - 合并相同材质的网格
+// - 移除不可见的面
+// - 简化高模为低模
+```
+
+2. **纹理优化**
+```tsx
+// ✅ 压缩纹理（使用 KTX2 格式）
+// ✅ 合理的纹理分辨率（2048x2048 通常足够）
+// ✅ 使用纹理图集减少绘制调用
+```
+
+3. **模型实例化**
+```tsx
+// 对于相同的模型（如风车），使用实例化可以提高性能
+// Cesium 会自动对相同的模型进行实例化渲染
+```
+
+### 地形性能
+
+1. **按需加载地形**
+```tsx
+// 只在需要精确贴地时才加载地形
+if (needTerrain) {
+  const terrainProvider = await CesiumTerrainProvider.fromUrl(
+    "//data.mars3d.cn/terrain"
+  );
+  viewer.terrainProvider = terrainProvider;
+}
+```
+
+2. **控制地形精度**
+```tsx
+// 可以通过调整请求的地形细节层级来平衡性能和精度
+viewer.scene.globe.maximumScreenSpaceError = 2; // 默认是 2
+```
+
+### 视锥体剔除
+
+```tsx
+// Cesium 会自动剔除视锥体外的对象
+// 确保不禁用此功能
+viewer.scene.globe.enableFrustumCulling = true; // 默认开启
+```
+
+## 常见问题
+
+### 模型悬浮在空中
+
+**原因**：使用 `EllipsoidTerrainProvider` 时，高度值是相对于椭球体表面的绝对高度。
+
+**解决方案**：
+1. 加载真实地形数据（推荐）
+2. 将高度值设置为 0 或较小值
+3. 使用 `heightReference` 属性贴地
+
+```tsx
+// 方案 1：加载真实地形（推荐）
+const terrainProvider = await CesiumTerrainProvider.fromUrl(
+  "//data.mars3d.cn/terrain"
+);
+viewer.terrainProvider = terrainProvider;
+
+// 方案 2：设置高度为 0
+const position = Cartesian3.fromDegrees(lng, lat, 0);
+
+// 方案 3：使用 heightReference（对 Entity 有效）
+model: {
+  uri: "model.gltf",
+  heightReference: HeightReference.CLAMP_TO_GROUND,  // 贴地
+}
+```
+
+### 模型加载失败
+
+确保模型文件路径正确，且文件可访问：
+
+```tsx
+// ✅ 使用相对路径
+uri: "/cesium/09/scene/scene.gltf"
+
+// ✅ 使用绝对 URL
+uri: "https://example.com/models/scene.gltf"
+
+// ❌ 错误的路径
+uri: "scene.gltf"  // 可能找不到文件
+```
+
+### 模型方向不对
+
+使用 `HeadingPitchRoll` 调整模型方向：
+
+```tsx
+// heading: 方位角（0-360°），顺时针从北开始
+// pitch: 俯仰角（-90° 到 90°）
+// roll: 横滚角（-180° 到 180°）
+
+const heading = CesiumMath.toRadians(135);  // 东南方向
+const pitch = CesiumMath.toRadians(0);      // 水平
+const roll = CesiumMath.toRadians(0);       // 不倾斜
+```
+
+### 模型动画不播放
+
+确保启用动画：
+
+```tsx
+model: {
+  uri: "model.gltf",
+  runAnimations: true,  // 启用模型动画
+}
+
+// 启用时钟动画
+viewer.clock.shouldAnimate = true;
+```
+
+### 模型过大或过小
+
+使用 `scale` 属性调整模型大小：
+
+```tsx
+model: {
+  uri: "model.gltf",
+  scale: 40,  // 放大 40 倍
+}
+```
+
+### 地形加载慢
+
+地形数据较大，加载需要时间：
+
+```tsx
+// 显示加载进度
+async function loadFengcheModel(viewer: Viewer) {
+  console.log("正在加载地形...");
+  const terrainProvider = await CesiumTerrainProvider.fromUrl(
+    "//data.mars3d.cn/terrain"
+  );
+  viewer.terrainProvider = terrainProvider;
+  console.log("地形加载完成");
+
+  // 继续加载模型...
+}
+```
+
+## 注意事项
+
+1. **坐标系统**：确保使用 WGS84 地理坐标系（经纬度）
+2. **高度基准**：明确高度值是相对于什么基准（椭球体、地形还是海平面）
+3. **模型格式**：推荐使用 GLTF 2.0 格式，支持 PBR 材质
+4. **文件大小**：大型模型建议使用 GLB（二进制）格式以减小文件大小
+5. **异步加载**：地形和模型加载都是异步的，注意使用 `async/await`
+6. **内存管理**：切换场景时记得清除不再使用的实体（`removeEntities`）
+7. **性能考虑**：大量模型时考虑使用 LOD 或实例化技术
+8. **动画性能**：动画会增加 CPU 开销，合理控制同时播放的动画数量
+
+## 参考资料
+
+- [Cesium GLTF 教程](https://cesium.com/learn/cesiumjs-learn/cesiumjs-3d-models/)
+- [GLTF 规范](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html)
+- [CesiumTerrainProvider API](https://cesium.com/learn/cesiumjs/ref-doc/CesiumTerrainProvider.html)
+- [Entity API](https://cesium.com/learn/cesiumjs/ref-doc/Entity.html)
+- [dat.gui 文档](https://github.com/dataarts/dat.gui)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
