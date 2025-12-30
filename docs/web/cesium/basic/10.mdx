@@ -1,0 +1,495 @@
+---
+sidebar_position: 10
+title: 自定义 Shader 材质特效
+tags: [Javascript]
+---
+
+import App from '@site/src/exmaples/web/cesium/basic/10';
+
+# 自定义 Shader 材质特效
+
+本示例展示如何在 Cesium 中使用 CustomShader 为 3D Tiles 模型添加自定义着色效果。通过编写 GLSL 着色器代码，可以实现渐变色、动态光圈、纹理贴图等丰富的视觉效果。
+
+<App />
+
+## 核心功能
+
+### CustomShader 简介
+
+CustomShader 是 Cesium 提供的自定义着色器 API，允许开发者对 3D Tiles 模型进行自定义渲染：
+
+- **GLSL 编程**：使用标准的 GLSL（OpenGL Shading Language）编写着色器代码
+- **顶点着色器**：处理模型顶点数据，控制几何形状和位置
+- **片元着色器**：处理像素着色，实现各种材质和光照效果
+- **灵活控制**：可以访问模型坐标、法向量、纹理坐标等属性
+- **实时渲染**：着色器在 GPU 上实时执行，性能优异
+
+### 着色器变量系统
+
+CustomShader 支持三种变量类型：
+
+- **Varyings**：从顶点着色器传递到片元着色器的插值变量
+- **Uniforms**：外部传入的常量数据（如纹理、时间、参数等）
+- **Attributes**：模型的顶点属性（位置、法向量等）
+
+### 内置变量和函数
+
+Cesium 提供了丰富的内置变量和函数：
+
+- **fsInput.attributes.positionMC**：模型坐标系中的顶点位置
+- **czm_frameNumber**：当前帧数，用于创建动画效果
+- **czm_modelMaterial**：材质属性（diffuse、specular 等）
+- **texture()**：GLSL 纹理采样函数
+
+## 关键代码
+
+### 初始化 Viewer 并加载 3D Tiles
+
+创建 Cesium Viewer 并加载 3D Tiles 数据集（viewer.ts）：
+
+```tsx
+export async function initViewer(el: HTMLElement) {
+  const viewer = new Viewer(el, {
+    baseLayerPicker: false,      // 隐藏底图选择器
+    animation: false,            // 隐藏动画控件
+    timeline: false,             // 隐藏时间轴
+    fullscreenButton: false,     // 隐藏全屏按钮
+    geocoder: false,             // 隐藏地理编码搜索框
+    homeButton: false,           // 隐藏主页按钮
+    infoBox: false,              // 隐藏信息框
+    sceneModePicker: false,      // 隐藏场景模式选择器
+    selectionIndicator: false,   // 隐藏选择指示器
+    navigationHelpButton: false, // 隐藏导航帮助按钮
+  });
+
+  viewer.scene.debugShowFramesPerSecond = true; // 显示帧率
+
+  // 配置自定义底图
+  viewer.imageryLayers.remove(viewer.imageryLayers.get(0));
+  const xyz = new UrlTemplateImageryProvider({
+    url: "//data.mars3d.cn/tile/img/{z}/{x}/{y}.jpg",
+  });
+  viewer.imageryLayers.addImageryProvider(xyz);
+
+  // 移除默认地形
+  viewer.scene.terrainProvider = new EllipsoidTerrainProvider({});
+
+  // 加载 3D Tiles 数据集
+  const tileset = await Cesium3DTileset.fromUrl("/cesium/02/data/tileset.json");
+  tileset.debugShowBoundingVolume = true;  // 显示包围盒（调试用）
+  viewer.scene.primitives.add(tileset);
+  viewer.zoomTo(tileset);
+
+  return { viewer, gui };
+}
+```
+
+### 纯渐变色效果
+
+使用片元着色器创建垂直渐变色效果：
+
+```tsx
+function pureGradientColor(viewer: Viewer, tileset: Cesium3DTileset) {
+  const customShader = new CustomShader({
+    // 片元着色器
+    fragmentShaderText: `
+      void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
+        vec3 positionMC = fsInput.attributes.positionMC;
+        // 根据模型 Y 坐标（高度）计算渐变色
+        material.diffuse = vec3(
+          0.0,                        // 红色分量为 0
+          1.0 - positionMC.y * 0.005, // 绿色随高度递减
+          1.0 - positionMC.y * 0.0015 // 蓝色随高度缓慢递减
+        );
+      }
+    `,
+  });
+  tileset.customShader = customShader;
+}
+```
+
+### 动态光圈效果
+
+在渐变色基础上添加动态扫描光圈：
+
+```tsx
+function pureGradientColorWithDynamicLight(viewer: Viewer, tileset: Cesium3DTileset) {
+  const customShader = new CustomShader({
+    fragmentShaderText: `
+      void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
+        vec3 positionMC = fsInput.attributes.positionMC;
+
+        // 基础渐变色
+        material.diffuse = vec3(
+          0.0,
+          1.0 - positionMC.y * 0.005,
+          1.0 - positionMC.y * 0.0015
+        );
+
+        // 动态光圈参数
+        float _baseHeight = 18.0;   // 建筑基础高度
+        float _heightRange = 60.0;  // 高亮范围
+        float _glowRange = 120.0;   // 光圈移动范围
+
+        // 计算相对高度
+        float vtxf_height = positionMC.y - _baseHeight;
+
+        // 创建呼吸效果（基于帧数的正弦波动）
+        float vtxf_a11 = fract(czm_frameNumber / 360.0) * 3.14159265 * 2.0;
+        float vtxf_a12 = vtxf_height / _heightRange + sin(vtxf_a11) * 0.1;
+        material.diffuse *= vec3(vtxf_a12, vtxf_a12, vtxf_a12);
+
+        // 创建上下移动的光圈
+        float vtxf_a13 = fract(czm_frameNumber / 360.0); // 360 控制速度
+        float vtxf_h = clamp(vtxf_height / _glowRange, 0.0, 1.0);
+        vtxf_a13 = abs(vtxf_a13 - 0.5) * 2.0;
+        float vtxf_diff = step(0.01, abs(vtxf_h - vtxf_a13)); // 0.01 控制光圈粗细
+        material.diffuse += material.diffuse * (1.0 - vtxf_diff);
+      }
+    `,
+  });
+  tileset.customShader = customShader;
+}
+```
+
+### 纹理贴图效果
+
+使用自定义纹理为建筑物墙面贴图：
+
+```tsx
+function texture1(viewer: Viewer, tileset: Cesium3DTileset) {
+  const customShader = new CustomShader({
+    // 定义 varying 变量，用于在顶点着色器和片元着色器间传递数据
+    varyings: {
+      v_normalMC: VaryingType.VEC3,  // 法向量
+      v_st: VaryingType.VEC3,        // 纹理坐标
+    },
+
+    // 定义 uniform 变量，传入纹理资源
+    uniforms: {
+      u_texture: {
+        value: new TextureUniform({
+          url: "/cesium/10/wall.jpg",
+        }),
+        type: UniformType.SAMPLER_2D,
+      },
+      u_texture1: {
+        value: new TextureUniform({
+          url: "/cesium/10/wall1.jpg",
+        }),
+        type: UniformType.SAMPLER_2D,
+      },
+    },
+
+    // 顶点着色器：传递法向量给片元着色器
+    vertexShaderText: `
+      void vertexMain(VertexInput vsInput, inout czm_modelVertexOutput vsOutput) {
+        v_normalMC = vsInput.attributes.normalMC;
+        v_st = vsInput.attributes.positionMC;
+      }
+    `,
+
+    // 片元着色器：根据法向量和位置进行纹理映射
+    fragmentShaderText: `
+      void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
+        vec3 positionMC = fsInput.attributes.positionMC;
+
+        // 纹理平铺尺寸
+        float width = 30.0;
+        float height = 70.0;
+        vec3 rgb;
+
+        // 判断是否为屋顶（法向量接近向上）
+        if (dot(vec3(0.0, 1.0, 0.0), v_normalMC) > 0.95) {
+          // 屋顶使用纯色
+          material.diffuse = vec3(0.65, 0.65, 0.65);
+        } else {
+          // 墙面贴图
+          float textureX = 0.0;
+          float dotYAxis = dot(vec3(0.0, 0.0, 1.0), v_normalMC);
+
+          // 根据法向量判断是前后面还是左右面
+          if (dotYAxis > 0.71 || dotYAxis < -0.71) {
+            textureX = mod(positionMC.x, width) / width;  // 前后面用 X 坐标
+          } else {
+            textureX = mod(positionMC.z, width) / width;  // 左右面用 Z 坐标
+          }
+
+          float textureY = mod(positionMC.y, height) / height;
+
+          // 根据建筑高度使用不同纹理
+          if (positionMC.y > 40.0) {
+            rgb = texture(u_texture, vec2(textureX, textureY)).rgb;
+          } else {
+            rgb = texture(u_texture1, vec2(textureX, textureY)).rgb;
+          }
+
+          material.diffuse = rgb;
+        }
+      }
+    `,
+  });
+  tileset.customShader = customShader;
+}
+```
+
+## 应用场景
+
+### 智慧城市可视化
+- **建筑分类展示**：根据建筑用途、高度、年代等属性设置不同颜色
+- **数据可视化**：将业务数据（人口密度、房价、能耗等）映射为颜色
+- **夜景模拟**：使用自定义着色器模拟城市夜景、灯光效果
+- **热力图叠加**：在建筑表面显示热力分布
+
+### 数字孪生
+- **状态监控**：根据设备运行状态动态改变模型颜色
+- **异常告警**：用闪烁、高亮等效果标识异常区域
+- **流程演示**：使用动态光圈模拟流程流转、能量传递
+- **历史回溯**：根据时间轴数据动态改变模型外观
+
+### 建筑规划与设计
+- **日照分析**：可视化建筑的日照时长和强度
+- **材质预览**：实时预览不同材质、纹理的效果
+- **风格对比**：快速切换不同配色方案和装饰风格
+- **影响评估**：展示新建建筑对周边环境的视觉影响
+
+### 文旅展示
+- **历史复原**：使用自定义材质还原古建筑的原始外观
+- **景区导览**：用颜色和光效区分不同功能区域
+- **夜游模拟**：模拟景区夜间灯光秀效果
+- **四季变换**：动态展示建筑在不同季节的外观
+
+## 性能优化技巧
+
+### 着色器代码优化
+
+1. **减少条件分支**
+```tsx
+// ❌ 避免：过多的 if-else 分支
+if (height < 10.0) {
+  color = vec3(1.0, 0.0, 0.0);
+} else if (height < 20.0) {
+  color = vec3(0.0, 1.0, 0.0);
+} else if (height < 30.0) {
+  color = vec3(0.0, 0.0, 1.0);
+}
+
+// ✅ 推荐：使用数学函数替代分支
+color = mix(
+  vec3(1.0, 0.0, 0.0),
+  vec3(0.0, 1.0, 0.0),
+  smoothstep(10.0, 20.0, height)
+);
+```
+
+2. **预计算常量**
+```tsx
+// ❌ 避免：在着色器中重复计算
+float pi = 3.14159265;
+float angle = pi * 2.0;
+
+// ✅ 推荐：使用 uniform 传入预计算值
+uniforms: {
+  u_twoPi: {
+    value: Math.PI * 2,
+    type: UniformType.FLOAT,
+  }
+}
+```
+
+3. **减少纹理采样**
+```tsx
+// ❌ 避免：多次采样同一纹理
+vec3 color1 = texture(u_texture, uv).rgb;
+vec3 color2 = texture(u_texture, uv).rgb;
+
+// ✅ 推荐：采样一次，复用结果
+vec3 color = texture(u_texture, uv).rgb;
+```
+
+### 纹理优化
+
+1. **压缩纹理格式**
+```tsx
+// ✅ 使用压缩格式（JPEG）而非 PNG（如果不需要透明度）
+// ✅ 控制纹理分辨率（1024x1024 或 2048x2048）
+// ✅ 使用 mipmaps 提高远距离渲染性能
+```
+
+2. **纹理复用**
+```tsx
+// ✅ 对相同材质的建筑使用同一张纹理
+// ✅ 使用纹理图集减少纹理数量
+```
+
+### 动画性能
+
+1. **控制更新频率**
+```tsx
+// 使用 czm_frameNumber 的除数控制动画速度
+// 数值越大，速度越慢，性能消耗越小
+float vtxf_a13 = fract(czm_frameNumber / 360.0); // 360 = 慢速
+float vtxf_a13 = fract(czm_frameNumber / 60.0);  // 60 = 快速
+```
+
+2. **避免复杂计算**
+```tsx
+// ❌ 避免：在片元着色器中进行复杂数学运算
+float complexValue = pow(sin(positionMC.y * 0.1), 2.0) * cos(time);
+
+// ✅ 推荐：简化计算或移到顶点着色器
+float simpleValue = sin(positionMC.y * 0.1);
+```
+
+## 常见问题
+
+### 着色器不生效
+
+**原因**：着色器代码有语法错误或逻辑错误。
+
+**解决方案**：
+1. 打开浏览器控制台查看错误信息
+2. 确保 GLSL 语法正确（vec3、float、分号等）
+3. 检查变量名是否正确
+
+```tsx
+// ❌ 错误：缺少分号
+material.diffuse = vec3(1.0, 0.0, 0.0)
+
+// ✅ 正确
+material.diffuse = vec3(1.0, 0.0, 0.0);
+```
+
+### 纹理显示异常
+
+**原因**：纹理路径错误、UV 坐标计算不正确、纹理尺寸参数不匹配。
+
+**解决方案**：
+
+```tsx
+// 1. 确保纹理路径正确
+uniforms: {
+  u_texture: {
+    value: new TextureUniform({
+      url: "/cesium/10/wall.jpg",  // 检查路径是否可访问
+    }),
+    type: UniformType.SAMPLER_2D,
+  },
+}
+
+// 2. 调整纹理平铺参数
+float width = 30.0;   // 调整以匹配实际建筑尺寸
+float height = 70.0;
+
+// 3. 检查 UV 坐标计算
+float textureX = mod(positionMC.x, width) / width;
+float textureY = mod(positionMC.y, height) / height;
+```
+
+### 动画卡顿
+
+**原因**：着色器计算量过大、帧率过低。
+
+**解决方案**：
+
+```tsx
+// 1. 简化着色器代码，减少计算量
+// 2. 降低动画更新频率
+float vtxf_a13 = fract(czm_frameNumber / 600.0); // 增大分母
+
+// 3. 检查是否有其他性能问题
+viewer.scene.debugShowFramesPerSecond = true; // 显示帧率
+```
+
+### 模型颜色过亮或过暗
+
+**原因**：颜色值超出 [0, 1] 范围，或光照计算问题。
+
+**解决方案**：
+
+```tsx
+// 1. 使用 clamp 限制颜色范围
+material.diffuse = clamp(material.diffuse, 0.0, 1.0);
+
+// 2. 调整光照模型
+const customShader = new CustomShader({
+  lightingModel: LightingModel.UNLIT,  // 无光照
+  // 或
+  lightingModel: LightingModel.PBR,    // 基于物理的渲染
+});
+```
+
+### Varying 变量未定义
+
+**原因**：在片元着色器中使用了未在 varyings 中声明的变量。
+
+**解决方案**：
+
+```tsx
+// 必须先在 varyings 中声明
+varyings: {
+  v_normalMC: VaryingType.VEC3,
+  v_st: VaryingType.VEC3,
+},
+
+// 然后在顶点着色器中赋值
+vertexShaderText: `
+  void vertexMain(VertexInput vsInput, inout czm_modelVertexOutput vsOutput) {
+    v_normalMC = vsInput.attributes.normalMC;
+    v_st = vsInput.attributes.positionMC;
+  }
+`,
+
+// 最后在片元着色器中使用
+fragmentShaderText: `
+  void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
+    // 现在可以使用 v_normalMC 和 v_st
+  }
+`,
+```
+
+### 法向量判断不准确
+
+**原因**：法向量阈值设置不合理。
+
+**解决方案**：
+
+```tsx
+// 调整点乘阈值以适应不同的建筑结构
+// dot() 返回值范围 [-1, 1]，值越接近 1 表示越平行
+
+// 屋顶判断（接近垂直向上）
+if (dot(vec3(0.0, 1.0, 0.0), v_normalMC) > 0.95) {
+  // 屋顶
+}
+
+// 墙面方向判断（cos(45°) ≈ 0.71）
+if (dotYAxis > 0.71 || dotYAxis < -0.71) {
+  // 前后面
+} else {
+  // 左右面
+}
+
+// 可以根据实际情况调整阈值 0.95、0.71
+```
+
+## 注意事项
+
+1. **GLSL 版本兼容性**：Cesium 使用 GLSL ES，确保着色器代码符合规范
+2. **坐标系统**：positionMC 是模型坐标系，根据模型原点不同可能需要调整计算
+3. **性能影响**：复杂的着色器会降低渲染性能，特别是在移动设备上
+4. **浏览器兼容性**：某些高级 GLSL 特性可能在旧浏览器上不支持
+5. **调试工具**：使用浏览器的 WebGL Inspector 或 Spector.js 调试着色器
+6. **数据范围**：确保颜色值在 [0, 1] 范围内，否则会出现异常显示
+7. **法向量使用**：法向量必须归一化，否则点乘计算会不准确
+8. **纹理坐标**：UV 坐标应在 [0, 1] 范围内，使用 mod() 函数实现平铺
+9. **动画同步**：使用 czm_frameNumber 确保动画在所有设备上保持一致
+10. **内存管理**：切换着色器时，旧的纹理资源会自动释放
+
+## 参考资料
+
+- [Cesium CustomShader API](https://cesium.com/learn/cesiumjs/ref-doc/CustomShader.html)
+- [Cesium Fabric 材质系统](https://github.com/CesiumGS/cesium/wiki/Fabric)
+- [GLSL 着色器语言规范](https://www.khronos.org/opengl/wiki/OpenGL_Shading_Language)
+- [WebGL 基础教程](https://webglfundamentals.org/)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
