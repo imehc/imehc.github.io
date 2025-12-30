@@ -1,7 +1,6 @@
 import type { Viewer } from "cesium";
 import { useEffect, useRef } from "react";
 import Container from "../../../componets/Container";
-import { loadCZML } from "./viewer";
 
 export default function App() {
 	const ref = useRef<HTMLDivElement>(null);
@@ -13,9 +12,9 @@ export default function App() {
 		let viewer: Viewer;
 
 		// Dynamic import to ensure Cesium is only loaded on the client side
-		import("./viewer").then(({ initViewer }) => {
+		import("./viewer").then(async ({ initViewer, loadCZML }) => {
 			viewer = initViewer(container);
-			loadCZML(viewer);
+			await loadCZML(viewer);
 		});
 
 		return () => {
