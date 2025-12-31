@@ -1,0 +1,759 @@
+---
+sidebar_position: 1
+title: 淹没分析
+tags: [Javascript, TypeScript, Cesium]
+---
+
+import App from '@site/src/exmaples/web/cesium/spatial-analysis/01';
+
+# 淹没分析
+
+本示例展示如何在 Cesium 中实现三维淹没分析功能。通过动态模拟水位上升或下降，可视化展示特定区域的淹没情况，支持实时参数调整和交互控制。该功能广泛应用于洪水模拟、水库蓄水分析、海平面上升预测等场景，为水利规划、防灾减灾、环境评估等提供直观的三维可视化支持。
+
+<App />
+
+## 核心功能
+
+### 淹没区域可视化
+
+使用 Cesium 的 Polygon 实体创建三维淹没效果：
+
+- **立体显示**：通过 `extrudedHeight` 属性创建水体的立体效果
+- **动态水位**：使用 `CallbackProperty` 实时更新水位高度
+- **半透明效果**：配置水体颜色和透明度，真实模拟水体视觉效果
+- **地形贴合**：结合地形数据，准确展示不同高度的淹没范围
+- **多边形支持**：支持任意复杂多边形区域的淹没模拟
+
+### 坐标系统支持
+
+灵活的坐标输入方式：
+
+- **经纬度坐标**：支持 `[lng1, lat1, lng2, lat2, ...]` 格式
+- **坐标点对象**：支持 `[{lng, lat}, {lng, lat}, ...]` 或 `[{x, y}, {x, y}, ...]` 格式
+- **笛卡尔坐标**：支持 Cesium 的 Cartesian3 坐标
+- **自动识别**：根据坐标范围自动判断坐标类型并转换
+- **混合支持**：允许在同一数组中混用不同格式的坐标点
+
+### 精确计算
+
+提供多种数学计算工具：
+
+- **浮点数精确运算**：避免 JavaScript 浮点数精度问题
+- **几何计算**：点在多边形内判断、随机点生成等
+- **地形贴地**：使用地形数据进行路线贴地计算
+- **坐标转换**：经纬度与笛卡尔坐标的相互转换
+
+## 关键代码
+
+### 初始化 Viewer
+
+创建 Cesium Viewer 并配置基础设置（viewer.ts）：
+
+```tsx
+export function initViewer(el: HTMLElement) {
+  const viewer = new Viewer(el, {
+    baseLayerPicker: false,
+    animation: false,
+    timeline: false,
+    fullscreenButton: false,
+    geocoder: false,
+    homeButton: false,
+    infoBox: false,
+    sceneModePicker: false,
+    selectionIndicator: false,
+    navigationHelpButton: false,
+  });
+
+  viewer.scene.debugShowFramesPerSecond = true;
+
+  // 移除默认影像和地形
+  viewer.imageryLayers.remove(viewer.imageryLayers.get(0));
+  viewer.scene.terrainProvider = new EllipsoidTerrainProvider({});
+
+  // 添加影像图层
+  const xyz = new UrlTemplateImageryProvider({
+    url: "//data.mars3d.cn/tile/img/{z}/{x}/{y}.jpg",
+  });
+  viewer.imageryLayers.addImageryProvider(xyz);
+
+  // 异步加载地形
+  CesiumTerrainProvider.fromUrl("https://data.mars3d.cn/terrain", {
+    requestWaterMask: true,
+    requestVertexNormals: true,
+  })
+    .then((terrainProvider) => {
+      viewer.scene.terrainProvider = terrainProvider;
+      viewer.scene.globe.depthTestAgainstTerrain = true;
+    })
+    .catch((error) => {
+      console.error("加载地形失败:", error);
+    });
+
+  return viewer;
+}
+```
+
+### 创建淹没分析实例
+
+定义淹没区域并创建分析实例：
+
+```tsx
+// 定义淹没区域坐标（经纬度）
+const floodAreaCoords = [
+  98.676842346815, 27.571578111198868,
+  98.86252156624968, 27.77444519911974,
+  98.76756234288729, 27.800244194152533,
+  98.57088699052892, 27.72492584876768,
+  98.676842346815, 27.571578111198868,
+];
+
+// 创建淹没分析实例
+const submergence = new SubmergenceAnalysis({
+  viewer: viewer,
+  targetHeight: 2500,      // 目标高度 2500 米
+  startHeight: 1000,       // 起始高度 1000 米
+  waterHeight: 1000,       // 当前水位 1000 米
+  adapCoordi: floodAreaCoords,
+  speed: 200,              // 速度 200 米/秒
+  color: Color.fromBytes(64, 157, 253, 150),
+  changetype: "up",        // 水位上升
+  speedCallback: (height: number) => {
+    console.log(`当前水位: ${height.toFixed(2)}米`);
+  },
+  endCallback: () => {
+    console.log("淹没分析完成");
+  }
+});
+
+// 开始淹没分析
+submergence.start();
+```
+
+### SubmergenceAnalysis 核心实现
+
+淹没分析类的核心实现：
+
+```tsx
+class SubmergenceAnalysis {
+  private viewer: Viewer;
+  private waterHeight: number;
+  private polygonEntity: Entity[];
+
+  constructor(options: SubmergenceAnalysisOptions) {
+    this.viewer = options.viewer;
+    this.waterHeight = options.startHeight ?? 0;
+    this.polygonEntity = [];
+    // ... 其他初始化
+
+    this.createEntity();
+    this.updatePoly(options.adapCoordi);
+  }
+
+  // 创建淹没实体
+  private createEntity(): void {
+    const nEntity = this.viewer.entities.add({
+      polygon: {
+        hierarchy: new ConstantProperty(new PolygonHierarchy([])),
+        material: this.color,
+        // 使用 CallbackProperty 动态更新高度
+        extrudedHeight: new CallbackProperty(
+          () => this.waterHeight,
+          false
+        ),
+      },
+    });
+    this.polygonEntity.push(nEntity);
+  }
+
+  // 开始淹没动画
+  start(): void {
+    this.timer = window.setInterval(() => {
+      const sp = this.speed / 50;
+
+      if (this.changetype === "up") {
+        // 使用精确浮点数运算
+        this.waterHeight = submerge.floatObj.add(this.waterHeight, sp);
+
+        if (this.waterHeight >= this.targetHeight) {
+          this.waterHeight = this.targetHeight;
+          this.stop();
+          this.endCallback();
+        }
+      }
+
+      this.speedCallback(this.waterHeight);
+    }, 20) as unknown as number;
+  }
+
+  // 清除淹没分析
+  clear(): void {
+    this.stop();
+    this.waterHeight = this.startHeight;
+
+    for (const entity of this.polygonEntity) {
+      this.viewer.entities.remove(entity);
+    }
+    this.polygonEntity = [];
+  }
+}
+```
+
+### 坐标转换实现
+
+支持多种坐标格式的转换：
+
+```tsx
+private coordsTransformation(
+  coords: number[] | CoordPoint[],
+): Cartesian3[] {
+  const result: Cartesian3[] = [];
+
+  // 如果是数字数组
+  if (Array.isArray(coords) && typeof coords[0] === "number") {
+    const numCoords = coords as number[];
+
+    // 检查是否是经纬度范围
+    if (numCoords[0] < 180 && numCoords[0] > -180 &&
+        numCoords[1] < 90 && numCoords[1] > -90) {
+      return Cartesian3.fromDegreesArray(numCoords);
+    }
+
+    // 否则假定是笛卡尔坐标
+    return [Cartesian3.fromArray(numCoords)];
+  }
+
+  // 如果是坐标点数组
+  const pointCoords = coords as CoordPoint[];
+  for (const point of pointCoords) {
+    let p: Cartesian3;
+
+    if ("lng" in point && "lat" in point) {
+      p = Cartesian3.fromDegrees(point.lng, point.lat);
+    } else if ("x" in point && "y" in point) {
+      if (point.x < 180 && point.x > -180 &&
+          point.y < 90 && point.y > -90) {
+        p = Cartesian3.fromDegrees(point.x, point.y);
+      } else {
+        p = point as unknown as Cartesian3;
+      }
+    } else {
+      continue;
+    }
+
+    result.push(p);
+  }
+
+  return result;
+}
+```
+
+### 浮点数精确运算
+
+避免 JavaScript 浮点数精度问题：
+
+```tsx
+// 精确的浮点数加法
+submerge.floatObj.add(0.1, 0.2)      // 0.3（而不是 0.30000000000000004）
+
+// 精确的浮点数减法
+submerge.floatObj.subtract(1.0, 0.1) // 0.9
+
+// 精确的浮点数乘法
+submerge.floatObj.multiply(0.2, 0.3) // 0.06
+
+// 精确的浮点数除法
+submerge.floatObj.divide(1.0, 3.0)   // 0.3333...
+
+// 在淹没分析中使用
+this.waterHeight = submerge.floatObj.add(this.waterHeight, speed);
+```
+
+### 几何计算工具
+
+提供实用的几何计算函数：
+
+```tsx
+// 判断点是否在多边形内
+const polygon = [
+  { x: 109.0, y: 35.0 },
+  { x: 110.0, y: 35.0 },
+  { x: 110.0, y: 36.0 },
+  { x: 109.0, y: 36.0 },
+];
+const point = { x: 109.5, y: 35.5 };
+const isInside = submerge.isDotInPolygon(point, polygon); // true
+
+// 生成矩形范围内的随机点
+const randomPoints = submerge.randomPointsWithinBbox(
+  109.0, 110.0,  // x范围
+  35.0, 36.0,    // y范围
+  10             // 点数
+);
+
+// 生成多边形内的随机点
+const polygonPoints = submerge.randomPointsWithinPolygon(
+  polygon,
+  50  // 生成50个随机点
+);
+
+// 判断点是否在线段上
+const onLine = submerge.onSegment(
+  { x: 0, y: 0 },
+  { x: 10, y: 10 },
+  { x: 5, y: 5 }
+); // true
+```
+
+## 应用场景
+
+### 水利工程规划
+
+- **水库蓄水分析**：模拟不同水位下的蓄水范围和容量
+- **大坝安全评估**：评估溃坝情况下的淹没范围和影响区域
+- **灌溉规划**：分析灌溉渠道的覆盖范围和水量需求
+- **水电站运营**：优化水库调度，平衡发电和防洪需求
+
+### 防灾减灾
+
+- **洪水预警**：根据降雨量预测洪水淹没范围
+- **应急预案**：制定洪灾应急疏散路线和避难场所
+- **灾害评估**：评估洪灾造成的经济损失和人员影响
+- **风险区划**：划定洪水风险等级，指导城市规划
+
+### 环境评估
+
+- **海平面上升**：预测全球变暖导致的海平面上升影响
+- **湿地保护**：分析湿地水位变化对生态的影响
+- **海岸线变化**：研究海岸侵蚀和沉积过程
+- **湖泊演变**：监测湖泊面积变化和水质状况
+
+### 城市规划
+
+- **排水系统设计**：评估城市排水系统的承载能力
+- **低洼地带识别**：找出易积水的区域，优化排水设施
+- **绿地规划**：设计雨水花园、滞洪区等海绵城市设施
+- **土地利用**：合理规划土地用途，避开高风险区域
+
+### 军事应用
+
+- **渡河作战**：评估河流水位对军事行动的影响
+- **战场评估**：分析水库溃坝对战场态势的改变
+- **设施防护**：保护重要军事设施免受洪水威胁
+- **后勤保障**：规划物资运输路线，避开淹没区域
+
+## 性能优化技巧
+
+### 动画优化
+
+1. **使用 requestAnimationFrame 代替 setInterval**
+
+```tsx
+// ❌ 避免：使用 setInterval
+start(): void {
+  this.timer = window.setInterval(() => {
+    this.updateWaterLevel();
+  }, 20);
+}
+
+// ✅ 推荐：使用 requestAnimationFrame
+private animate = () => {
+  this.updateWaterLevel();
+
+  if (this.isRunning) {
+    this.animationFrame = requestAnimationFrame(this.animate);
+  }
+}
+
+start(): void {
+  this.isRunning = true;
+  this.animate();
+}
+```
+
+2. **控制更新频率**
+
+```tsx
+// 降低更新频率以提升性能
+private lastUpdateTime = 0;
+private updateInterval = 50; // 50ms 更新一次
+
+private animate = (time: number) => {
+  if (time - this.lastUpdateTime >= this.updateInterval) {
+    this.updateWaterLevel();
+    this.lastUpdateTime = time;
+  }
+
+  if (this.isRunning) {
+    this.animationFrame = requestAnimationFrame(this.animate);
+  }
+}
+```
+
+### 实体管理优化
+
+1. **复用实体而不是重复创建**
+
+```tsx
+// ❌ 避免：每次都创建新实体
+开始淹没: () => {
+  const entity = viewer.entities.add({ /* ... */ });
+}
+
+// ✅ 推荐：复用已有实体
+开始淹没: () => {
+  if (this.polygonEntity.length > 0) {
+    this.polygonEntity[0].show = true;
+    this.waterHeight = this.startHeight;
+  } else {
+    this.createEntity();
+  }
+}
+```
+
+2. **及时清理不需要的实体**
+
+```tsx
+clear(): void {
+  for (const entity of this.polygonEntity) {
+    this.viewer.entities.remove(entity);
+  }
+  this.polygonEntity = [];
+  this.stop();
+}
+```
+
+### 坐标转换优化
+
+1. **缓存转换结果**
+
+```tsx
+private coordinatesCache = new Map<string, Cartesian3[]>();
+
+updatePoly(adapCoordi: number[] | CoordPoint[]): void {
+  const cacheKey = JSON.stringify(adapCoordi);
+  let transformedCoords = this.coordinatesCache.get(cacheKey);
+
+  if (!transformedCoords) {
+    transformedCoords = this.coordsTransformation(adapCoordi);
+    this.coordinatesCache.set(cacheKey, transformedCoords);
+  }
+
+  // 使用坐标...
+}
+```
+
+2. **批量转换坐标**
+
+```tsx
+// ✅ 推荐：使用 fromDegreesArray 批量转换
+const positions = Cartesian3.fromDegreesArray([
+  lng1, lat1, lng2, lat2, lng3, lat3,
+]);
+
+// ❌ 避免：逐个转换
+const positions = [
+  Cartesian3.fromDegrees(lng1, lat1),
+  Cartesian3.fromDegrees(lng2, lat2),
+  Cartesian3.fromDegrees(lng3, lat3),
+];
+```
+
+### 回调优化
+
+1. **使用节流限制回调频率**
+
+```tsx
+private throttle(func: Function, delay: number) {
+  let lastCall = 0;
+  return (...args: any[]) => {
+    const now = Date.now();
+    if (now - lastCall >= delay) {
+      lastCall = now;
+      func(...args);
+    }
+  };
+}
+
+// 对高频回调使用节流
+this.speedCallback = this.throttle(options.speedCallback, 100);
+```
+
+2. **避免在回调中进行复杂计算**
+
+```tsx
+// ❌ 避免：在回调中进行复杂计算
+speedCallback: (height) => {
+  const affectedArea = calculateAffectedArea(height);
+  const population = calculatePopulation(affectedArea);
+  updateUI(height, affectedArea, population);
+}
+
+// ✅ 推荐：简化回调，复杂计算异步执行
+speedCallback: (height) => {
+  updateHeightDisplay(height);
+  this.debouncedCalculate(height);
+}
+```
+
+### 大面积淹没优化
+
+1. **使用多个小多边形代替大多边形**
+
+```tsx
+// 将大区域分割为多个小区域
+const subRegions = divideRegion(largeRegion, 4);
+
+subRegions.forEach(region => {
+  const submergence = new SubmergenceAnalysis({
+    viewer,
+    adapCoordi: region,
+    // ... 其他配置
+  });
+});
+```
+
+2. **使用 LOD（细节层次）策略**
+
+```tsx
+// 根据相机距离调整多边形精度
+viewer.camera.changed.addEventListener(() => {
+  const height = viewer.camera.positionCartographic.height;
+
+  if (height > 100000) {
+    this.updatePoly(simplifiedCoords);
+  } else {
+    this.updatePoly(detailedCoords);
+  }
+});
+```
+
+## 常见问题
+
+### 淹没效果不显示
+
+**原因**：坐标数据格式错误、地形未加载、或 Polygon 配置问题。
+
+**解决方案**：
+
+```tsx
+// 1. 检查坐标格式
+console.log("坐标数据:", adapCoordi);
+const transformedCoords = this.coordsTransformation(adapCoordi);
+console.log("转换后的坐标:", transformedCoords);
+
+// 2. 确保 Polygon 正确创建
+if (this.polygonEntity.length > 0 && this.polygonEntity[0].polygon) {
+  console.log("Polygon 已创建");
+} else {
+  console.error("Polygon 创建失败");
+}
+
+// 3. 检查高度值
+console.log("当前水位高度:", this.waterHeight);
+console.log("目标高度:", this.targetHeight);
+
+// 4. 确保地形已加载
+CesiumTerrainProvider.fromUrl(terrainUrl)
+  .then((terrainProvider) => {
+    viewer.scene.terrainProvider = terrainProvider;
+    console.log("地形加载成功");
+  })
+  .catch((error) => {
+    console.error("地形加载失败:", error);
+  });
+```
+
+### 水位变化不平滑
+
+**原因**：更新频率过低或速度设置不当。
+
+**解决方案**：
+
+```tsx
+// 1. 增加更新频率
+this.timer = window.setInterval(() => {
+  this.updateWaterLevel();
+}, 16); // 约60fps
+
+// 2. 调整速度计算
+const sp = this.speed / 60;
+
+// 3. 使用缓动函数
+const easeInOut = (t: number) => {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+};
+
+const progress = (this.waterHeight - this.startHeight) /
+                 (this.targetHeight - this.startHeight);
+const easedSpeed = this.speed * easeInOut(progress);
+```
+
+### 坐标转换错误
+
+**原因**：坐标格式不正确或坐标系统不匹配。
+
+**解决方案**：
+
+```tsx
+// 1. 验证坐标范围
+function validateCoordinates(coords: number[]): boolean {
+  for (let i = 0; i < coords.length; i += 2) {
+    const lng = coords[i];
+    const lat = coords[i + 1];
+
+    if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+      console.error(`无效的坐标: lng=${lng}, lat=${lat}`);
+      return false;
+    }
+  }
+  return true;
+}
+
+// 2. 统一坐标格式
+function normalizeCoordinates(
+  coords: number[] | CoordPoint[]
+): number[] {
+  if (typeof coords[0] === 'number') {
+    return coords as number[];
+  }
+
+  return (coords as CoordPoint[]).flatMap(point =>
+    'lng' in point ? [point.lng, point.lat] : [point.x, point.y]
+  );
+}
+```
+
+### 内存泄漏
+
+**原因**：实体未清理、定时器未销毁、事件监听器未移除。
+
+**解决方案**：
+
+```tsx
+// 完整的清理函数
+clear(): void {
+  if (this.timer !== null) {
+    window.clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  for (const entity of this.polygonEntity) {
+    if (!entity.isDestroyed) {
+      this.viewer.entities.remove(entity);
+    }
+  }
+  this.polygonEntity = [];
+
+  this.coordinatesCache?.clear();
+}
+
+// React 组件卸载时清理
+useEffect(() => {
+  return () => {
+    if (cleanup) cleanup();
+    if (viewer && !viewer.isDestroyed()) viewer.destroy();
+    if (gui) gui.destroy();
+  };
+}, []);
+```
+
+### 地形未贴合
+
+**原因**：地形数据未加载或深度检测未启用。
+
+**解决方案**：
+
+```tsx
+// 1. 确保地形数据加载
+const terrainProvider = await CesiumTerrainProvider.fromUrl(
+  "https://data.mars3d.cn/terrain",
+  {
+    requestWaterMask: true,
+    requestVertexNormals: true,
+  }
+);
+viewer.scene.terrainProvider = terrainProvider;
+
+// 2. 启用深度检测
+viewer.scene.globe.depthTestAgainstTerrain = true;
+
+// 3. 等待地形加载完成
+terrainProvider.readyPromise.then(() => {
+  console.log("地形加载完成");
+});
+```
+
+### GUI 显示异常
+
+**原因**：CSS 样式冲突或 GUI 配置问题。
+
+**解决方案**：
+
+```tsx
+// 确保 GUI 样式正确
+const gui = new GUI();
+gui.domElement.style.position = "fixed";
+gui.domElement.style.top = "50%";
+gui.domElement.style.transform = "translateY(-50%)";
+gui.domElement.style.left = "0";
+gui.domElement.style.zIndex = "1000";
+
+// 处理移动端适配
+if (window.innerWidth < 768) {
+  gui.domElement.style.width = "100%";
+  gui.domElement.style.top = "0";
+  gui.domElement.style.transform = "none";
+}
+```
+
+### 性能卡顿
+
+**原因**：淹没区域过大、更新频率过高、或计算复杂度高。
+
+**解决方案**：
+
+```tsx
+// 1. 降低更新频率
+const UPDATE_INTERVAL = 50;
+
+// 2. 简化多边形
+function simplifyPolygon(
+  coords: Cartesian3[],
+  tolerance: number
+): Cartesian3[] {
+  // 使用 Douglas-Peucker 算法简化
+}
+
+// 3. 使用 Web Worker
+const worker = new Worker('calculation-worker.js');
+worker.postMessage({ height: this.waterHeight });
+worker.onmessage = (e) => {
+  this.speedCallback(e.data.result);
+};
+
+// 4. 限制淹没区域数量
+const MAX_REGIONS = 10;
+if (regions.length > MAX_REGIONS) {
+  console.warn(`淹没区域过多`);
+}
+```
+
+## 注意事项
+
+1. **坐标系统**：支持经纬度坐标和笛卡尔坐标，会根据数值范围自动判断类型
+2. **地形数据**：使用地形提供者可以获得更真实的淹没效果，建议使用高质量地形数据
+3. **性能考虑**：大面积淹没区域可能影响性能，建议适当控制更新频率和多边形复杂度
+4. **浏览器兼容性**：需要支持 WebGL 2.0 的现代浏览器，推荐使用 Chrome 或 Firefox 最新版本
+5. **资源清理**：组件卸载时务必调用 `clear()` 方法清理资源，避免内存泄漏
+6. **事件循环**：使用 `setInterval` 时注意清理，推荐使用 `requestAnimationFrame` 代替
+7. **精度问题**：使用 `submerge.floatObj` 工具进行浮点数运算，避免精度损失
+8. **深度检测**：启用 `depthTestAgainstTerrain` 确保淹没效果正确遮挡地形
+9. **异步加载**：地形数据是异步加载的，确保加载完成后再进行淹没分析
+10. **回调频率**：高频回调（如 `speedCallback`）可能影响性能，建议使用节流或防抖
+
+## 参考资料
+
+- [Cesium Polygon API](https://cesium.com/learn/cesiumjs/ref-doc/PolygonGraphics.html)
+- [Cesium CallbackProperty API](https://cesium.com/learn/cesiumjs/ref-doc/CallbackProperty.html)
+- [Cesium TerrainProvider API](https://cesium.com/learn/cesiumjs/ref-doc/TerrainProvider.html)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
