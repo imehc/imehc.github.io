@@ -1,0 +1,625 @@
+---
+sidebar_position: 3
+title: 通视分析
+tags: [Javascript, TypeScript, Cesium]
+---
+
+import App from '@site/src/exmaples/web/cesium/spatial-analysis/03';
+
+# 通视分析
+
+本示例展示如何在 Cesium 中实现三维场景的通视分析功能。通过分析观测点与目的点之间的视线是否被地形或建筑物遮挡，判断两点之间是否可见，并可视化显示通视情况。该功能广泛应用于通信基站选址、观景台规划、视域分析、军事侦察等场景，为视线规划、可见性评估、障碍物识别等提供直观的三维可视化支持。
+
+<App />
+
+## 核心功能
+
+### 可视化显示
+
+通视分析提供直观的可视化效果：
+
+- **点标记**：明确标识观测点和目的点位置
+- **可见线段**：使用绿色线段表示可见部分
+- **不可见线段**：使用红色线段表示被遮挡部分
+- **文字标注**：显示观测点、目的点名称和距离信息
+- **实时分析**：支持动态更新观测点和目的点
+
+### 通视分析算法
+
+核心算法基于射线投射和地形采样：
+
+- **线段分割**：将视线分割成多个小段进行精确检测
+- **高程比较**：比较理论高程与实际地形高程
+- **障碍点定位**：精确识别第一个遮挡点的位置
+- **距离计算**：计算可见距离和总距离
+- **坐标转换**：支持世界坐标与屏幕坐标互转
+
+### 精确计算
+
+提供多种计算工具：
+
+- **空间距离**：计算三维空间中两点之间的直线距离
+- **窗口距离**：计算屏幕坐标系中的二维距离
+- **坐标拾取**：支持地形和模型的坐标拾取
+- **高度参考**：自动识别地形和模型的高度参考模式
+
+## 关键代码
+
+### 创建通视分析实例
+
+定义观测点和目的点，创建通视分析：
+
+```tsx
+import { Cartesian3, Color } from 'cesium';
+import SightlineAnalysis from './SightlineAnalysis';
+
+// 定义观测点和目的点（笛卡尔坐标）
+const startPoint = Cartesian3.fromDegrees(116.39, 39.90, 100);
+const endPoint = Cartesian3.fromDegrees(116.40, 39.91, 50);
+
+// 创建通视分析实例
+const sightlineAnalysis = new SightlineAnalysis({
+  viewer: viewer,
+  startPoint: startPoint,
+  endPoint: endPoint,
+  visibleColor: Color.GREEN,      // 可见线段颜色
+  invisibleColor: Color.RED,      // 不可见线段颜色
+  lineWidth: 3,                   // 线段宽度
+  segments: 100,                  // 分割段数（越多越精确）
+});
+
+// 执行通视分析
+const result = sightlineAnalysis.analyze();
+
+console.log('是否可见:', result.visible);
+console.log('可见距离:', result.visibleDistance, '米');
+console.log('总距离:', result.totalDistance, '米');
+if (!result.visible) {
+  console.log('障碍点:', result.barrierPoint);
+}
+```
+
+### SightlineAnalysis 核心实现
+
+通视分析类的核心实现：
+
+```tsx
+class SightlineAnalysis {
+  private viewer: Viewer;
+  private startPoint: Cartesian3;
+  private endPoint: Cartesian3;
+  private segments: number;
+
+  /**
+   * 执行通视分析
+   */
+  analyze(): SightlineResult {
+    const barrierPoint = this.sightline(this.startPoint, this.endPoint);
+    const totalDistance = this.calculateSpatialDistance(
+      this.startPoint,
+      this.endPoint
+    );
+
+    let visible = false;
+    let visibleDistance = 0;
+
+    // 判断是否可见
+    if (barrierPoint.x === 0 && barrierPoint.y === 0 && barrierPoint.z === 0) {
+      // 可见 - 绘制绿色线段
+      visible = true;
+      visibleDistance = totalDistance;
+      this.drawVisibleLine(this.startPoint, this.endPoint);
+    } else {
+      // 不可见 - 绘制绿色+红色线段
+      visible = false;
+      visibleDistance = this.calculateSpatialDistance(
+        this.startPoint,
+        barrierPoint
+      );
+      this.drawInvisibleLine(this.startPoint, barrierPoint, this.endPoint);
+    }
+
+    return {
+      visible,
+      barrierPoint,
+      visibleDistance,
+      totalDistance,
+    };
+  }
+}
+```
+
+### 通视分析核心算法
+
+射线投射和地形采样算法：
+
+```tsx
+/**
+ * 通视分析核心算法
+ * 将观测点与目的点连成的线段分割成多个小段，检查每段的实际高程与理论高程
+ */
+private sightline(
+  startWorldPoint: Cartesian3,
+  endWorldPoint: Cartesian3
+): Cartesian3 {
+  let barrierPoint = Cartesian3.ZERO.clone();
+
+  // 转换为屏幕坐标
+  const startPoint = this.convertCartesian3ToCartesian2(startWorldPoint);
+  const endPoint = this.convertCartesian3ToCartesian2(endWorldPoint);
+
+  if (!startPoint || !endPoint) {
+    return barrierPoint;
+  }
+
+  // 计算世界距离和窗口距离
+  const worldLength = this.calculateSpatialDistance(
+    startWorldPoint,
+    endWorldPoint
+  );
+  const windowLength = this.calculateWindowDistance(startPoint, endPoint);
+
+  // 计算间隔
+  const worldInterval = worldLength / this.segments;
+  const windowInterval = windowLength / this.segments;
+
+  // 逐段检查通视性
+  for (let i = 1; i < this.segments; i++) {
+    // 计算屏幕坐标上的中间点
+    const tempWindowPoint = this.findWindowPositionByPixelInterval(
+      startPoint,
+      endPoint,
+      windowInterval * i
+    );
+
+    // 计算世界坐标上的理论中间点
+    const tempPoint = this.findCartesian3ByDistance(
+      startWorldPoint,
+      endWorldPoint,
+      worldInterval * i
+    );
+
+    // 拾取该屏幕位置对应的实际地表点
+    const surfacePoint = this.pickCartesian(tempWindowPoint);
+
+    if (!surfacePoint || !surfacePoint.cartesian) {
+      continue;
+    }
+
+    // 转换为地理坐标，比较高程
+    const tempRad = Cartographic.fromCartesian(tempPoint);
+    const surfaceRad = Cartographic.fromCartesian(surfacePoint.cartesian);
+
+    // 如果实际高程 > 理论高程，说明有障碍物
+    if (surfaceRad.height > tempRad.height) {
+      barrierPoint = tempPoint;
+      break;
+    }
+  }
+
+  return barrierPoint;
+}
+```
+
+### 坐标拾取实现
+
+支持地形和模型的坐标拾取：
+
+```tsx
+/**
+ * 拾取笛卡尔坐标
+ */
+private pickCartesian(windowPosition: Cartesian2): PickResult | null {
+  // 根据窗口坐标，从场景的深度缓冲区中拾取相应的位置（模型坐标）
+  const cartesianModel = this.viewer.scene.pickPosition(windowPosition);
+
+  // 场景相机向指定的鼠标位置发射射线
+  const ray = this.viewer.camera.getPickRay(windowPosition);
+  if (!ray) {
+    return null;
+  }
+
+  // 获取射线与三维球相交的点（地形坐标）
+  const cartesianTerrain = this.viewer.scene.globe.pick(
+    ray,
+    this.viewer.scene
+  );
+
+  if (!cartesianModel && !cartesianTerrain) {
+    return null;
+  }
+
+  const result: PickResult = {
+    cartesian: cartesianModel || cartesianTerrain,
+    CartesianModel: cartesianModel,
+    cartesianTerrain: cartesianTerrain,
+    windowCoordinates: windowPosition.clone(),
+    altitudeMode: HeightReference.NONE,
+  };
+
+  // 坐标不一致，证明是模型，采用绝对高度。否则是地形，用贴地模式
+  if (cartesianModel && cartesianTerrain) {
+    result.altitudeMode =
+      cartesianModel.z.toFixed(0) !== cartesianTerrain.z.toFixed(0)
+        ? HeightReference.NONE
+        : HeightReference.CLAMP_TO_GROUND;
+  }
+
+  return result;
+}
+```
+
+### 距离计算
+
+计算空间距离和窗口距离：
+
+```tsx
+/**
+ * 计算三维空间距离
+ */
+private calculateSpatialDistance(
+  startPoint: Cartesian3,
+  endPoint: Cartesian3
+): number {
+  return Math.sqrt(
+    (endPoint.x - startPoint.x) ** 2 +
+    (endPoint.y - startPoint.y) ** 2 +
+    (endPoint.z - startPoint.z) ** 2
+  );
+}
+
+/**
+ * 计算窗口（2D）距离
+ */
+private calculateWindowDistance(
+  startPoint: Cartesian2,
+  endPoint: Cartesian2
+): number {
+  return Math.sqrt(
+    (endPoint.x - startPoint.x) ** 2 +
+    (endPoint.y - startPoint.y) ** 2
+  );
+}
+```
+
+### 动态更新观测点
+
+支持动态更新观测点和目的点：
+
+```tsx
+// 更新观测点
+sightlineAnalysis.setStartPoint(newStartPoint);
+
+// 更新目的点
+sightlineAnalysis.setEndPoint(newEndPoint);
+
+// 重新执行分析
+const result = sightlineAnalysis.analyze();
+```
+
+## 应用场景
+
+### 通信基站选址
+
+- **信号覆盖**：分析基站与目标区域之间的视线遮挡
+- **站点优化**：选择最佳基站位置以最大化信号覆盖
+- **干扰分析**：评估相邻基站之间的视线干扰
+- **网络规划**：优化基站布局，降低建设成本
+
+### 观景台规划
+
+- **景观可见性**：评估观景台能看到的景观范围
+- **最佳位置**：选择视野最开阔的观景台位置
+- **遮挡物识别**：识别影响视线的建筑或地形
+- **游客体验**：优化观景路线，提供最佳观景体验
+
+### 军事侦察
+
+- **侦察点选择**：选择视野开阔的侦察位置
+- **目标可见性**：评估对敌方目标的观测能力
+- **隐蔽路线**：规划避开敌方视线的行进路线
+- **阵地构建**：选择有利地形构建防御阵地
+
+### 建筑规划
+
+- **视线影响**：评估新建筑对周边视线的影响
+- **采光分析**：分析建筑之间的遮挡关系
+- **景观保护**：确保重要景观不被新建筑遮挡
+- **城市设计**：优化建筑布局，改善视觉环境
+
+### 环境监测
+
+- **监测站布设**：选择最佳监测站位置
+- **视频监控**：评估监控摄像头的覆盖范围
+- **森林防火**：布置瞭望塔，监控森林火情
+- **边界监控**：设置边界监控点，防止非法入侵
+
+## 性能优化技巧
+
+### 分割段数优化
+
+1. **动态调整分割数**
+
+```tsx
+// 根据距离动态调整分割段数
+const distance = Cartesian3.distance(startPoint, endPoint);
+const segments = Math.min(200, Math.max(50, Math.floor(distance / 10)));
+
+const sightlineAnalysis = new SightlineAnalysis({
+  viewer,
+  startPoint,
+  endPoint,
+  segments,  // 动态分割数
+});
+```
+
+2. **粗略检测后精确分析**
+
+```tsx
+// 先使用较少的段数进行粗略检测
+const roughAnalysis = new SightlineAnalysis({
+  viewer,
+  startPoint,
+  endPoint,
+  segments: 20,  // 粗略检测
+});
+
+const roughResult = roughAnalysis.analyze();
+
+// 如果不可见，在障碍点附近进行精确分析
+if (!roughResult.visible) {
+  const detailedAnalysis = new SightlineAnalysis({
+    viewer,
+    startPoint: roughResult.barrierPoint,
+    endPoint,
+    segments: 100,  // 精确分析
+  });
+}
+```
+
+### 坐标拾取优化
+
+1. **缓存拾取结果**
+
+```tsx
+private pickCache = new Map<string, PickResult>();
+
+private pickCartesian(windowPosition: Cartesian2): PickResult | null {
+  const key = `${windowPosition.x.toFixed(0)},${windowPosition.y.toFixed(0)}`;
+
+  if (this.pickCache.has(key)) {
+    return this.pickCache.get(key)!;
+  }
+
+  const result = this.performPick(windowPosition);
+
+  if (result) {
+    this.pickCache.set(key, result);
+  }
+
+  return result;
+}
+```
+
+2. **限制拾取频率**
+
+```tsx
+// 使用节流限制拾取频率
+private lastPickTime = 0;
+private pickInterval = 16;  // 约60fps
+
+private pickCartesian(windowPosition: Cartesian2): PickResult | null {
+  const now = Date.now();
+
+  if (now - this.lastPickTime < this.pickInterval) {
+    return null;
+  }
+
+  this.lastPickTime = now;
+  return this.performPick(windowPosition);
+}
+```
+
+### 实体管理优化
+
+1. **复用实体而不是重复创建**
+
+```tsx
+// ✅ 推荐：复用已有实体
+analyze(): SightlineResult {
+  // 清除旧线段
+  this.clearLines();
+
+  // 绘制新线段（复用同一个实体ID）
+  this.drawVisibleLine(start, end);
+}
+
+// ❌ 避免：每次都创建新实体
+analyze(): SightlineResult {
+  const newEntity = this.viewer.entities.add({...});  // 内存泄漏
+}
+```
+
+2. **批量更新减少渲染**
+
+```tsx
+// 批量更新实体属性
+viewer.entities.suspendEvents();
+
+for (const entity of entities) {
+  entity.position = newPosition;
+}
+
+viewer.entities.resumeEvents();
+```
+
+## 常见问题
+
+### 分析结果不准确
+
+**原因**：分割段数过少、地形数据未加载或坐标系统不匹配。
+
+**解决方案**：
+
+```tsx
+// 1. 增加分割段数
+const sightlineAnalysis = new SightlineAnalysis({
+  viewer,
+  startPoint,
+  endPoint,
+  segments: 200,  // 增加到200段
+});
+
+// 2. 确保地形数据已加载
+CesiumTerrainProvider.fromUrl(terrainUrl)
+  .then((terrainProvider) => {
+    viewer.scene.terrainProvider = terrainProvider;
+
+    // 等待地形加载完成后再执行分析
+    terrainProvider.readyPromise.then(() => {
+      const result = sightlineAnalysis.analyze();
+    });
+  });
+
+// 3. 启用深度检测
+viewer.scene.globe.depthTestAgainstTerrain = true;
+```
+
+### 线段显示异常
+
+**原因**：线段被地形遮挡或颜色设置不当。
+
+**解决方案**：
+
+```tsx
+// 1. 禁用线段贴地
+this.viewer.entities.add({
+  polyline: {
+    positions: [start, end],
+    width: 3,
+    material: Color.GREEN,
+    clampToGround: false,  // 不贴地
+  },
+});
+
+// 2. 调整线段颜色和宽度
+const sightlineAnalysis = new SightlineAnalysis({
+  viewer,
+  startPoint,
+  endPoint,
+  visibleColor: Color.GREEN.withAlpha(0.8),
+  invisibleColor: Color.RED.withAlpha(0.8),
+  lineWidth: 5,  // 增加宽度
+});
+```
+
+### 性能卡顿
+
+**原因**：分割段数过多、频繁执行分析或实体过多。
+
+**解决方案**：
+
+```tsx
+// 1. 优化分割段数
+const distance = Cartesian3.distance(startPoint, endPoint);
+const segments = Math.min(100, Math.max(20, Math.floor(distance / 20)));
+
+// 2. 使用防抖限制分析频率
+const debouncedAnalyze = debounce(() => {
+  const result = sightlineAnalysis.analyze();
+}, 100);
+
+// 3. 清理不需要的实体
+sightlineAnalysis.clear();
+```
+
+### 坐标拾取失败
+
+**原因**：鼠标位置没有地形或模型、相机角度问题。
+
+**解决方案**：
+
+```tsx
+private pickCartesian(windowPosition: Cartesian2): PickResult | null {
+  // 1. 先尝试拾取模型
+  let cartesian = this.viewer.scene.pickPosition(windowPosition);
+
+  // 2. 如果没有模型，尝试拾取地形
+  if (!cartesian) {
+    const ray = this.viewer.camera.getPickRay(windowPosition);
+    if (ray) {
+      cartesian = this.viewer.scene.globe.pick(ray, this.viewer.scene);
+    }
+  }
+
+  // 3. 如果还是没有，使用椭球体求交
+  if (!cartesian) {
+    const ray = this.viewer.camera.getPickRay(windowPosition);
+    if (ray) {
+      cartesian = this.viewer.scene.globe.ellipsoid.intersectRay(ray);
+    }
+  }
+
+  return cartesian ? { cartesian, ... } : null;
+}
+```
+
+### 内存泄漏
+
+**原因**：实体未清理、事件监听器未移除。
+
+**解决方案**：
+
+```tsx
+// 完整的清理函数
+clear(): void {
+  // 清除线段
+  this.clearLines();
+
+  // 清除点标记
+  if (this.startEntity) {
+    this.viewer.entities.remove(this.startEntity);
+    this.startEntity = null;
+  }
+
+  if (this.endEntity) {
+    this.viewer.entities.remove(this.endEntity);
+    this.endEntity = null;
+  }
+
+  // 清除缓存
+  this.pickCache?.clear();
+}
+
+// React 组件卸载时清理
+useEffect(() => {
+  return () => {
+    if (sightlineAnalysis) {
+      sightlineAnalysis.clear();
+    }
+    if (viewer && !viewer.isDestroyed()) {
+      viewer.destroy();
+    }
+  };
+}, []);
+```
+
+## 注意事项
+
+1. **分割段数**：段数越多越精确，但性能开销越大，建议根据距离动态调整（20-200段）
+2. **地形数据**：必须加载地形数据才能进行准确的通视分析，建议使用高精度地形
+3. **深度检测**：启用 `depthTestAgainstTerrain` 确保正确处理地形遮挡
+4. **坐标系统**：观测点和目的点必须使用笛卡尔坐标系统
+5. **资源清理**：组件卸载时务必调用 `clear()` 方法清理资源
+6. **性能考虑**：避免频繁执行通视分析，建议使用防抖或节流
+7. **浏览器兼容性**：需要支持 WebGL 2.0 的现代浏览器
+8. **相机角度**：某些极端相机角度可能导致坐标拾取失败
+9. **线段宽度**：线段宽度不要设置过大，否则可能影响视觉效果
+10. **颜色选择**：建议使用对比鲜明的颜色区分可见和不可见线段
+
+## 参考资料
+
+- [Cesium Polyline API](https://cesium.com/learn/cesiumjs/ref-doc/PolylineGraphics.html)
+- [Cesium Scene API](https://cesium.com/learn/cesiumjs/ref-doc/Scene.html)
+- [Cesium Camera API](https://cesium.com/learn/cesiumjs/ref-doc/Camera.html)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
