@@ -1,0 +1,615 @@
+---
+sidebar_position: 2
+title: 日照分析
+tags: [Javascript, TypeScript, Cesium]
+---
+
+import App from '@site/src/exmaples/web/cesium/spatial-analysis/02';
+
+# 日照分析
+
+本示例展示如何在 Cesium 中实现三维场景的日照分析功能。通过模拟一天中不同时间段的太阳光照和阴影效果，可视化展示建筑物或地形在不同时刻的光照情况。该功能广泛应用于建筑设计、城市规划、太阳能评估等场景，为日照权分析、建筑采光优化、光伏发电选址等提供直观的三维可视化支持。
+
+<App />
+
+## 核心功能
+
+### 光照与阴影渲染
+
+使用 Cesium 的光照和阴影系统创建真实的日照效果：
+
+- **全局光照**：通过 `enableLighting` 启用基于太阳位置的全局光照
+- **实时阴影**：使用 `shadows` 属性渲染建筑物和地形的实时阴影
+- **时间驱动**：根据 Cesium 时钟自动更新太阳位置和光照角度
+- **真实模拟**：基于地理位置和时间计算准确的太阳高度角和方位角
+- **动态变化**：支持时间流逝的动画播放，观察阴影的动态变化
+
+### 时间控制系统
+
+灵活的时间管理功能：
+
+- **日期设置**：支持自定义日期（YYYY-MM-DD格式）
+- **时间范围**：可设置开始时间和结束时间（小时，0-23）
+- **循环播放**：使用 `ClockRange.LOOP_STOP` 实现时间循环
+- **速度控制**：可调节时间流逝速率（1-2000倍速）
+- **时间轴显示**：内置时间轴组件，实时显示当前时间
+- **暂停恢复**：支持暂停和继续播放，保持当前时间状态
+
+### 系统时钟配置
+
+提供完整的时钟配置选项：
+
+- **起止时间**：定义分析的时间范围
+- **时钟范围**：`LOOP_STOP` 循环模式或 `UNBOUNDED` 无限模式
+- **时钟步进**：`SYSTEM_CLOCK_MULTIPLIER` 系统时钟倍数模式
+- **时间倍率**：控制时间流逝的快慢
+- **当前时间**：支持从上次暂停位置继续播放
+
+## 关键代码
+
+### 初始化 Viewer
+
+创建 Cesium Viewer 并配置基础设置（viewer.ts）：
+
+```tsx
+export function initViewer(el: HTMLElement) {
+  const viewer = new Viewer(el, {
+    baseLayerPicker: false,
+    timeline: true,  // 显示时间轴以便观察时间变化
+    fullscreenButton: false,
+    geocoder: false,
+    homeButton: false,
+    infoBox: false,
+    sceneModePicker: false,
+    selectionIndicator: false,
+    navigationHelpButton: false,
+  });
+
+  viewer.scene.debugShowFramesPerSecond = true;
+  viewer.scene.globe.depthTestAgainstTerrain = true;
+
+  // 添加影像图层
+  const xyz = new UrlTemplateImageryProvider({
+    url: "//data.mars3d.cn/tile/img/{z}/{x}/{y}.jpg",
+  });
+  viewer.imageryLayers.addImageryProvider(xyz);
+
+  // 加载 3D Tiles 模型
+  Cesium3DTileset.fromUrl("/cesium/02/data/tileset.json")
+    .then((tileset) => {
+      viewer.scene.primitives.add(tileset);
+      viewer.zoomTo(tileset);
+    })
+    .catch((error: Error) => {
+      console.error("加载3D Tiles失败:", error);
+    });
+
+  return viewer;
+}
+```
+
+### 创建日照分析实例
+
+定义日照分析参数并创建实例：
+
+```tsx
+// 创建日照分析实例
+const sunlightAnalysis = new SunlightAnalysis({
+  viewer: viewer,
+  play: true,
+  day: "2025-06-21",      // 夏至日
+  startTime: 8,           // 早上8点
+  stopTime: 18,           // 下午6点
+  multiplier: 500,        // 500倍速
+  clockRange: ClockRange.LOOP_STOP,
+  clockStep: ClockStep.SYSTEM_CLOCK_MULTIPLIER,
+});
+```
+
+### SunlightAnalysis 核心实现
+
+日照分析类的核心实现：
+
+```tsx
+class SunlightAnalysis {
+  private viewer: Viewer;
+  private stopTime: JulianDate | null = null;
+
+  constructor(options: SunlightAnalysisOptions) {
+    this.viewer = options.viewer;
+    this.analysis(options);
+  }
+
+  private analysis(config: SunlightAnalysisOptions): void {
+    const viewer = this.viewer;
+
+    if (!config.play) {
+      // 暂停动画
+      this.stopTime = viewer.clock.currentTime.clone();
+      viewer.clock.shouldAnimate = false;
+    } else {
+      // 启用光照和阴影
+      viewer.scene.globe.enableLighting = true;
+      viewer.shadows = true;
+
+      // 设置日期和时间
+      const dayString = config.day || new Date().toISOString().split("T")[0];
+      const date = new Date(dayString);
+      const startHour = config.startTime ?? 8;
+      const stopHour = config.stopTime ?? 18;
+
+      const startDate = new Date(date);
+      startDate.setHours(startHour, 0, 0, 0);
+
+      const stopDate = new Date(date);
+      stopDate.setHours(stopHour, 0, 0, 0);
+
+      // 配置时钟
+      viewer.clock.startTime = JulianDate.fromDate(startDate);
+      viewer.clock.stopTime = JulianDate.fromDate(stopDate);
+      viewer.clock.clockRange = config.clockRange ?? ClockRange.LOOP_STOP;
+      viewer.clock.clockStep = config.clockStep ?? ClockStep.SYSTEM_CLOCK_MULTIPLIER;
+      viewer.clock.multiplier = config.multiplier ?? 500;
+
+      // 设置当前时间
+      if (this.stopTime) {
+        viewer.clock.currentTime = this.stopTime.clone();
+      } else {
+        viewer.clock.currentTime = JulianDate.fromDate(startDate);
+      }
+
+      // 启动动画
+      viewer.clock.shouldAnimate = true;
+    }
+  }
+
+  // 播放日照动画
+  play(day: string, startTime: number, stopTime: number, multiplier: number): void {
+    this.analysis({
+      viewer: this.viewer,
+      play: true,
+      day,
+      startTime,
+      stopTime,
+      multiplier,
+      clockRange: ClockRange.LOOP_STOP,
+      clockStep: ClockStep.SYSTEM_CLOCK_MULTIPLIER,
+    });
+  }
+
+  // 暂停日照动画
+  pause(): void {
+    this.analysis({
+      viewer: this.viewer,
+      play: false,
+    });
+  }
+
+  // 清除日照分析效果
+  clear(): void {
+    this.viewer.scene.globe.enableLighting = false;
+    this.viewer.shadows = false;
+    this.viewer.clock.shouldAnimate = false;
+    this.stopTime = null;
+  }
+}
+```
+
+### 时钟配置选项
+
+Cesium 时钟支持多种配置模式：
+
+```tsx
+// 循环播放模式
+viewer.clock.clockRange = ClockRange.LOOP_STOP;
+
+// 无限播放模式
+viewer.clock.clockRange = ClockRange.UNBOUNDED;
+
+// 只播放一次
+viewer.clock.clockRange = ClockRange.CLAMPED;
+
+// 时钟步进模式
+viewer.clock.clockStep = ClockStep.SYSTEM_CLOCK_MULTIPLIER; // 系统时钟倍数
+viewer.clock.clockStep = ClockStep.SYSTEM_CLOCK;             // 实时时钟
+viewer.clock.clockStep = ClockStep.TICK_DEPENDENT;           // 每帧固定增量
+
+// 时间倍率
+viewer.clock.multiplier = 1;     // 实时
+viewer.clock.multiplier = 60;    // 60倍速（1秒=1分钟）
+viewer.clock.multiplier = 3600;  // 3600倍速（1秒=1小时）
+```
+
+## 应用场景
+
+### 建筑设计
+
+- **日照权分析**：评估建筑对周边建筑的日照遮挡影响
+- **采光优化**：分析建筑内部的自然采光情况，优化窗户位置和大小
+- **节能设计**：评估建筑朝向对能耗的影响，优化被动式设计
+- **景观设计**：分析阴影对户外空间的影响，合理规划休闲区域
+
+### 城市规划
+
+- **建筑间距规划**：确定合理的建筑间距，保证日照权
+- **高度控制**：评估建筑高度对周边环境的影响
+- **绿地规划**：分析公园、广场的日照条件，优化绿化配置
+- **街道设计**：评估街道的日照和阴影，提升步行环境舒适度
+
+### 太阳能评估
+
+- **光伏选址**：评估不同位置的日照时长和强度
+- **发电量预测**：根据日照数据预测太阳能板的发电效率
+- **最佳倾角**：分析太阳能板的最佳安装角度
+- **遮挡分析**：识别可能影响光伏发电的遮挡物
+
+### 环境评估
+
+- **热岛效应**：分析建筑阴影对城市热环境的影响
+- **微气候研究**：评估日照对局部气候的影响
+- **植物生长**：分析植物的光照条件，优化绿化方案
+- **舒适度评估**：评估户外空间的热舒适度
+
+### 房地产开发
+
+- **户型优化**：分析不同朝向户型的日照条件
+- **溢价评估**：评估日照条件对房价的影响
+- **营销展示**：可视化展示项目的日照优势
+- **合规检查**：验证建筑设计是否满足日照规范
+
+## 性能优化技巧
+
+### 阴影渲染优化
+
+1. **调整阴影质量**
+
+```tsx
+// 根据性能需求调整阴影质量
+viewer.shadows = true;
+viewer.shadowMap.maximumDistance = 5000.0;  // 阴影最大距离
+viewer.shadowMap.size = 2048;                // 阴影贴图大小（越大越清晰但越耗性能）
+viewer.shadowMap.softShadows = true;         // 柔和阴影（更真实但更耗性能）
+
+// 低性能设备优化
+if (isMobileDevice()) {
+  viewer.shadowMap.size = 1024;
+  viewer.shadowMap.softShadows = false;
+}
+```
+
+2. **控制阴影范围**
+
+```tsx
+// 只为特定实体启用阴影
+tileset.shadows = ShadowMode.ENABLED;         // 投射和接收阴影
+tileset.shadows = ShadowMode.CAST_ONLY;       // 只投射阴影
+tileset.shadows = ShadowMode.RECEIVE_ONLY;    // 只接收阴影
+tileset.shadows = ShadowMode.DISABLED;        // 禁用阴影
+
+// 根据相机距离动态调整
+viewer.camera.changed.addEventListener(() => {
+  const height = viewer.camera.positionCartographic.height;
+  viewer.shadows = height < 10000;
+});
+```
+
+### 时钟优化
+
+1. **合理设置时间倍率**
+
+```tsx
+// ❌ 避免：倍率过高导致画面跳跃
+viewer.clock.multiplier = 10000;
+
+// ✅ 推荐：根据需求设置合适的倍率
+viewer.clock.multiplier = 500;   // 适合日照分析
+viewer.clock.multiplier = 60;    // 适合细致观察
+
+// 动态调整倍率
+const adjustMultiplier = (cameraHeight: number) => {
+  if (cameraHeight > 50000) {
+    return 2000;  // 远距离观察，快速播放
+  } else if (cameraHeight > 10000) {
+    return 500;   // 中距离观察
+  } else {
+    return 100;   // 近距离观察，慢速播放
+  }
+};
+```
+
+2. **优化时间更新**
+
+```tsx
+// 降低时间轴更新频率
+viewer.timeline.updateFromClock = () => {
+  // 自定义更新逻辑
+  const currentTime = viewer.clock.currentTime;
+  // 仅在需要时更新UI
+};
+```
+
+### 3D Tiles 加载优化
+
+1. **按需加载模型**
+
+```tsx
+// 使用 maximumScreenSpaceError 控制细节层次
+const tileset = await Cesium3DTileset.fromUrl(url, {
+  maximumScreenSpaceError: 16,  // 值越小越精细，但加载更慢
+  skipLevelOfDetail: true,
+  baseScreenSpaceError: 1024,
+  skipScreenSpaceErrorFactor: 16,
+  skipLevels: 1,
+});
+
+// 根据性能动态调整
+if (isMobileDevice()) {
+  tileset.maximumScreenSpaceError = 32;
+}
+```
+
+2. **预加载关键视角**
+
+```tsx
+// 在播放前预加载关键视角的瓦片
+viewer.camera.setView({
+  destination: buildingPosition,
+  complete: () => {
+    console.log("视角设置完成，瓦片已加载");
+  }
+});
+```
+
+### 光照计算优化
+
+1. **禁用不必要的光照特性**
+
+```tsx
+// 在不需要光照时禁用
+viewer.scene.globe.enableLighting = false;
+
+// 仅在播放日照分析时启用
+if (analysisActive) {
+  viewer.scene.globe.enableLighting = true;
+  viewer.shadows = true;
+} else {
+  viewer.scene.globe.enableLighting = false;
+  viewer.shadows = false;
+}
+```
+
+2. **使用固定光照方向**
+
+```tsx
+// 对于静态场景，可以使用固定光照方向
+viewer.scene.light = new DirectionalLight({
+  direction: new Cartesian3(0.5, 0.5, -0.8)
+});
+
+// 禁用基于时间的太阳位置计算
+viewer.scene.globe.enableLighting = false;
+```
+
+## 常见问题
+
+### 阴影不显示
+
+**原因**：阴影未启用、模型不支持阴影、或光照配置错误。
+
+**解决方案**：
+
+```tsx
+// 1. 确保启用阴影
+viewer.shadows = true;
+viewer.scene.globe.enableLighting = true;
+
+// 2. 检查模型阴影设置
+tileset.shadows = ShadowMode.ENABLED;
+
+// 3. 验证时间设置
+console.log("当前时间:", JulianDate.toDate(viewer.clock.currentTime));
+
+// 4. 检查太阳位置
+const sunPosition = Cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(
+  viewer.clock.currentTime
+);
+console.log("太阳位置:", sunPosition);
+
+// 5. 调整阴影范围
+viewer.shadowMap.maximumDistance = 10000.0;
+```
+
+### 时间不更新
+
+**原因**：时钟未启动或时间范围配置错误。
+
+**解决方案**：
+
+```tsx
+// 1. 确保时钟启动
+viewer.clock.shouldAnimate = true;
+
+// 2. 检查时间范围
+console.log("开始时间:", JulianDate.toDate(viewer.clock.startTime));
+console.log("结束时间:", JulianDate.toDate(viewer.clock.stopTime));
+console.log("当前时间:", JulianDate.toDate(viewer.clock.currentTime));
+
+// 3. 验证时钟配置
+console.log("时钟范围:", viewer.clock.clockRange);
+console.log("时钟步进:", viewer.clock.clockStep);
+console.log("时间倍率:", viewer.clock.multiplier);
+
+// 4. 手动更新时间
+viewer.clock.currentTime = JulianDate.fromDate(new Date());
+```
+
+### 日期格式错误
+
+**原因**：日期字符串格式不正确。
+
+**解决方案**：
+
+```tsx
+// 1. 验证日期格式
+function validateDate(dateString: string): boolean {
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(dateString)) {
+    console.error("日期格式错误，应为 YYYY-MM-DD");
+    return false;
+  }
+
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    console.error("无效的日期");
+    return false;
+  }
+
+  return true;
+}
+
+// 2. 使用默认值
+const date = controls.date || new Date().toISOString().split("T")[0];
+
+// 3. 提供日期选择器
+paramsFolder.add(controls, "date")
+  .name("日期 (YYYY-MM-DD)")
+  .onChange((value: string) => {
+    if (!validateDate(value)) {
+      controls.date = new Date().toISOString().split("T")[0];
+    }
+  });
+```
+
+### 性能问题
+
+**原因**：阴影质量过高、模型过于复杂、或更新频率过高。
+
+**解决方案**：
+
+```tsx
+// 1. 降低阴影质量
+viewer.shadowMap.size = 1024;
+viewer.shadowMap.softShadows = false;
+
+// 2. 减少阴影距离
+viewer.shadowMap.maximumDistance = 3000.0;
+
+// 3. 简化模型
+tileset.maximumScreenSpaceError = 32;
+
+// 4. 性能监控
+viewer.scene.debugShowFramesPerSecond = true;
+
+// 5. 根据帧率动态调整
+let frameCount = 0;
+let lastFpsCheck = Date.now();
+
+viewer.scene.postRender.addEventListener(() => {
+  frameCount++;
+  const now = Date.now();
+
+  if (now - lastFpsCheck >= 1000) {
+    const fps = frameCount;
+    frameCount = 0;
+    lastFpsCheck = now;
+
+    // 如果帧率低于30，降低质量
+    if (fps < 30) {
+      viewer.shadowMap.size = Math.max(512, viewer.shadowMap.size / 2);
+      console.log(`性能优化：降低阴影质量 (FPS: ${fps})`);
+    }
+  }
+});
+```
+
+### 时间轴显示异常
+
+**原因**：时间轴配置问题或 CSS 样式冲突。
+
+**解决方案**：
+
+```tsx
+// 1. 确保启用时间轴
+const viewer = new Viewer(el, {
+  timeline: true,
+  animation: false,  // 可选：显示动画控件
+});
+
+// 2. 调整时间轴样式
+const timeline = viewer.timeline;
+timeline.container.style.bottom = "0";
+timeline.container.style.left = "0";
+timeline.container.style.right = "0";
+
+// 3. 处理移动端适配
+if (window.innerWidth < 768) {
+  timeline.container.style.height = "30px";
+}
+
+// 4. 监听时间轴变化
+viewer.clock.onTick.addEventListener((clock) => {
+  console.log("当前时间:", JulianDate.toDate(clock.currentTime));
+});
+```
+
+### 3D Tiles 加载失败
+
+**原因**：模型路径错误、CORS 问题、或模型格式不支持。
+
+**解决方案**：
+
+```tsx
+// 1. 验证路径
+console.log("模型路径:", "/cesium/02/data/tileset.json");
+
+// 2. 检查网络请求
+Cesium3DTileset.fromUrl("/cesium/02/data/tileset.json")
+  .then((tileset) => {
+    console.log("模型加载成功");
+    viewer.scene.primitives.add(tileset);
+  })
+  .catch((error: Error) => {
+    console.error("加载失败:", error.message);
+    console.error("错误堆栈:", error.stack);
+  });
+
+// 3. 使用相对路径或绝对路径
+const modelUrl = new URL(
+  "/cesium/02/data/tileset.json",
+  window.location.origin
+).href;
+
+// 4. 添加加载状态提示
+const loadingIndicator = document.createElement("div");
+loadingIndicator.textContent = "模型加载中...";
+document.body.appendChild(loadingIndicator);
+
+Cesium3DTileset.fromUrl(modelUrl)
+  .then((tileset) => {
+    loadingIndicator.remove();
+  })
+  .catch((error) => {
+    loadingIndicator.textContent = "模型加载失败";
+  });
+```
+
+## 注意事项
+
+1. **时区问题**：`JulianDate` 基于 UTC 时间，需要考虑时区转换
+2. **日期范围**：确保开始时间小于结束时间，否则动画不会播放
+3. **阴影性能**：阴影渲染较耗性能，移动设备建议降低阴影质量
+4. **模型要求**：3D Tiles 模型需要支持阴影投射和接收
+5. **浏览器兼容性**：需要支持 WebGL 2.0 的现代浏览器
+6. **资源清理**：组件卸载时务必调用 `clear()` 方法清理资源
+7. **时钟范围**：使用 `LOOP_STOP` 模式可实现循环播放
+8. **深度检测**：启用 `depthTestAgainstTerrain` 确保阴影正确遮挡地形
+9. **时间倍率**：过高的倍率可能导致画面跳跃，建议 100-2000 之间
+10. **光照计算**：基于真实的天文算法，考虑地球自转和公转
+
+## 参考资料
+
+- [Cesium Shadows API](https://cesium.com/learn/cesiumjs/ref-doc/Viewer.html#shadows)
+- [Cesium Clock API](https://cesium.com/learn/cesiumjs/ref-doc/Clock.html)
+- [Cesium JulianDate API](https://cesium.com/learn/cesiumjs/ref-doc/JulianDate.html)
+- [Cesium 3D Tiles](https://cesium.com/learn/cesiumjs/ref-doc/Cesium3DTileset.html)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
