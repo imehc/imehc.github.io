@@ -1,0 +1,925 @@
+---
+sidebar_position: 4
+title: 空间测量
+tags: [Javascript, TypeScript, Cesium]
+---
+
+import App from '@site/src/exmaples/web/cesium/spatial-analysis/04';
+
+# 空间测量
+
+本示例展示如何在 Cesium 中实现全面的空间测量功能。支持多种测量类型，包括空间距离、地表距离、地表面积、高度差、三角测量和方位角测量。通过交互式测量工具，用户可以直观地获取场景中的各种空间信息。该功能广泛应用于工程测绘、规划设计、地形分析、导航定位等场景，为空间量算、距离评估、面积统计等提供精确的三维测量支持。
+
+<App />
+
+## 核心功能
+
+### 多种测量模式
+
+提供六种专业测量工具：
+
+- **空间距离测量**：测量两点之间的直线距离（不考虑地形）
+- **地表距离测量**：测量沿地形表面的实际距离
+- **地表面积测量**：测量多边形区域的地表面积
+- **高度差测量**：测量两点之间的垂直高度差
+- **三角测量**：同时测量水平距离、高度差和空间距离
+- **方位角测量**：测量两点之间的方位角和距离
+
+### 交互式测量
+
+直观的用户交互体验：
+
+- **鼠标交互**：单击添加测量点，右键结束测量
+- **实时预览**：鼠标移动时实时显示测量线段和结果
+- **可视化标注**：清晰显示测量点、线段、文字标注
+- **多段测量**：支持连续添加多个测量点
+- **结果展示**：自动计算并显示测量结果（米/千米、平方米/平方公里）
+
+### 精确计算
+
+提供多种精确的计算方法：
+
+- **空间距离**：三维欧氏距离计算
+- **大地测量**：使用椭球体进行精确的地表距离计算
+- **地形采样**：实时采样地形高度进行贴地计算
+- **面积计算**：三角剖分法计算不规则多边形面积
+- **方位角计算**：基于大地坐标的方位角计算
+
+## 关键代码
+
+### 创建测量工具实例
+
+初始化测量工具：
+
+```tsx
+import MeasureTool from './MeasureTool';
+
+// 创建测量工具实例
+const measureTool = new MeasureTool({
+  viewer: viewer,
+  onMeasureStart: () => {
+    console.log('开始测量');
+  },
+  onMeasureEnd: () => {
+    console.log('结束测量');
+  },
+});
+
+// 开始空间距离测量
+measureTool.measureLineSpace();
+
+// 开始地表距离测量
+measureTool.measureGroundDistance();
+
+// 开始面积测量
+measureTool.measureAreaSpace();
+
+// 开始高度差测量
+measureTool.measureAltitude();
+
+// 开始三角测量
+measureTool.measureTriangle();
+
+// 开始方位角测量
+measureTool.measureAngle();
+
+// 清除所有测量结果
+measureTool.clear();
+```
+
+### 空间距离测量实现
+
+测量两点之间的直线距离：
+
+```tsx
+/**
+ * 空间距离测量
+ * 测量两点之间的直线距离（不考虑地形）
+ */
+measureLineSpace(): void {
+  this.bMeasuring = true;
+  this.onMeasureStart?.();
+
+  const positions: Cartesian3[] = [];
+  let poly: Entity | null = null;
+  let distance = 0;
+
+  this.handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
+
+  // 监听鼠标移动事件
+  this.handler.setInputAction((movement) => {
+    // 获取鼠标位置的三维坐标
+    let cartesian = this.viewer.scene.pickPosition(movement.endPosition);
+    if (!cartesian) {
+      const ray = this.viewer.camera.getPickRay(movement.endPosition);
+      if (ray) {
+        cartesian = this.viewer.scene.globe.pick(ray, this.viewer.scene);
+      }
+    }
+
+    if (cartesian && positions.length >= 2) {
+      if (!poly) {
+        // 创建线实体
+        poly = this.createPolyline(positions, Color.CHARTREUSE, 2);
+      } else {
+        positions.pop();
+        positions.push(cartesian);
+      }
+    }
+  }, ScreenSpaceEventType.MOUSE_MOVE);
+
+  // 监听单击事件
+  this.handler.setInputAction((movement) => {
+    let cartesian = this.viewer.scene.pickPosition(movement.position);
+    if (!cartesian) {
+      const ray = this.viewer.camera.getPickRay(movement.position);
+      if (ray) {
+        cartesian = this.viewer.scene.globe.pick(ray, this.viewer.scene);
+      }
+    }
+
+    if (cartesian) {
+      if (positions.length === 0) {
+        positions.push(cartesian.clone());
+      }
+      positions.push(cartesian);
+
+      // 计算距离增量
+      const distanceAdd = parseFloat(this.getSpaceDistance(positions));
+      distance += distanceAdd;
+
+      // 添加标注
+      const textDistance =
+        (distance > 1000
+          ? `${(distance / 1000).toFixed(3)}千米`
+          : `${distance.toFixed(2)}米`) +
+        `\n(+${
+          distanceAdd > 1000
+            ? `${(distanceAdd / 1000).toFixed(3)}千米`
+            : `${distanceAdd.toFixed(2)}米`
+        })`;
+
+      const entity = this.viewer.entities.add({
+        name: '空间直线距离',
+        position: positions[positions.length - 1],
+        point: {
+          pixelSize: 5,
+          color: Color.RED,
+          outlineColor: Color.WHITE,
+          outlineWidth: 2,
+        },
+        label: {
+          text: textDistance,
+          font: '18px sans-serif',
+          fillColor: Color.CHARTREUSE,
+          style: LabelStyle.FILL_AND_OUTLINE,
+          outlineWidth: 2,
+          verticalOrigin: VerticalOrigin.BOTTOM,
+          pixelOffset: new Cartesian2(20, -20),
+        },
+      });
+      this.measureIds.push(entity.id);
+    }
+  }, ScreenSpaceEventType.LEFT_CLICK);
+
+  // 监听右键结束测量
+  this.handler.setInputAction(() => {
+    this.finishMeasure();
+  }, ScreenSpaceEventType.RIGHT_CLICK);
+}
+```
+
+### 地表距离测量实现
+
+测量沿地形表面的距离：
+
+```tsx
+/**
+ * 地表距离测量
+ * 测量沿地形表面的距离
+ */
+measureGroundDistance(): void {
+  this.bMeasuring = true;
+  this.onMeasureStart?.();
+  this.viewer.scene.globe.depthTestAgainstTerrain = true;
+
+  const positions: Cartesian3[] = [];
+  let poly: Entity | null = null;
+  let distance = 0;
+
+  this.handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
+
+  // 监听鼠标移动和单击事件
+  // ... （采样地形高度进行贴地计算）
+
+  // 计算地表距离
+  if (positions.length > 2) {
+    const positions_: Cartographic[] = [];
+    const sp = Cartographic.fromCartesian(positions[positions.length - 3]);
+    const ep = Cartographic.fromCartesian(positions[positions.length - 2]);
+    const geodesic = new EllipsoidGeodesic();
+    geodesic.setEndPoints(sp, ep);
+    const s = geodesic.surfaceDistance;
+
+    positions_.push(sp);
+    let num = Math.floor(s / 100);
+    num = num > 200 ? 200 : num;
+    num = num < 20 ? 20 : num;
+
+    // 插值获取中间点
+    for (let i = 1; i < num; i++) {
+      const res = geodesic.interpolateUsingSurfaceDistance(
+        (s / num) * i,
+        new Cartographic()
+      );
+      res.height = this.viewer.scene.sampleHeight(res);
+      positions_.push(res);
+    }
+    positions_.push(ep);
+
+    // 计算总距离
+    let distanceAdd = 0;
+    for (let ii = 0; ii < positions_.length - 1; ii++) {
+      geodesic.setEndPoints(positions_[ii], positions_[ii + 1]);
+      const d = geodesic.surfaceDistance;
+      distanceAdd += Math.sqrt(
+        d ** 2 + (positions_[ii + 1].height - positions_[ii].height) ** 2
+      );
+    }
+
+    distance += distanceAdd;
+  }
+}
+```
+
+### 地表面积测量实现
+
+测量多边形区域的面积：
+
+```tsx
+/**
+ * 地表面积测量
+ * 测量多边形区域的面积
+ */
+measureAreaSpace(): void {
+  this.bMeasuring = true;
+  this.onMeasureStart?.();
+
+  const positions: Cartesian3[] = [];
+  const tempPoints: Array<{ lon: number; lat: number; hei: number }> = [];
+  let polygon: Entity | null = null;
+
+  this.handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
+
+  // 监听鼠标移动和单击事件
+  // ... （创建多边形实体）
+
+  // 监听右键结束测量
+  this.handler.setInputAction(() => {
+    if (this.handler && !this.handler.isDestroyed()) {
+      this.handler.destroy();
+      this.handler = null;
+    }
+    positions.pop();
+
+    // 计算面积
+    const area = this.getArea(tempPoints, positions);
+    let areaText: string;
+    if (area < 0.001) {
+      areaText = `${(area * 1000000).toFixed(4)}平方米`;
+    } else {
+      areaText = `${area.toFixed(4)}平方公里`;
+    }
+
+    // 添加面积标注
+    const entity = this.viewer.entities.add({
+      name: '多边形面积',
+      position: positions[positions.length - 1],
+      label: {
+        text: areaText,
+        font: '18px sans-serif',
+        fillColor: Color.CYAN,
+        style: LabelStyle.FILL_AND_OUTLINE,
+        outlineWidth: 2,
+        verticalOrigin: VerticalOrigin.BOTTOM,
+        pixelOffset: new Cartesian2(20, -40),
+      },
+    });
+    this.measureIds.push(entity.id);
+
+    this.bMeasuring = false;
+    this.onMeasureEnd?.();
+  }, ScreenSpaceEventType.RIGHT_CLICK);
+}
+```
+
+### 面积计算实现
+
+使用三角剖分法计算多边形面积：
+
+```tsx
+/**
+ * 计算多边形面积
+ */
+private getArea(
+  points: Array<{ lon: number; lat: number; hei: number }>,
+  positions: Cartesian3[]
+): number {
+  const radiansPerDegree = Math.PI / 180.0;
+  const degreesPerRadian = 180.0 / Math.PI;
+
+  let res = 0;
+
+  // 拆分三角曲面
+  for (let i = 0; i < points.length - 2; i++) {
+    const j = (i + 1) % points.length;
+    const k = (i + 2) % points.length;
+    const totalAngle = this.calculateAngle(
+      points[i],
+      points[j],
+      points[k],
+      radiansPerDegree,
+      degreesPerRadian
+    );
+
+    const disTemp1 = this.calculateDistance(positions[i], positions[j]);
+    const disTemp2 = this.calculateDistance(positions[j], positions[k]);
+    res += disTemp1 * disTemp2 * Math.abs(Math.sin(totalAngle));
+  }
+  return res / 1000000.0;
+}
+```
+
+### 高度差测量实现
+
+测量两点之间的高度差：
+
+```tsx
+/**
+ * 高度差测量
+ * 测量两点之间的高度差
+ */
+measureAltitude(): void {
+  this.bMeasuring = true;
+  this.onMeasureStart?.();
+
+  const trianArr: number[] = [];
+  let distanceLineNum = 0;
+  let Line1: Entity | undefined;
+  let Line2: Entity | undefined;
+  let H: Entity | undefined;
+
+  this.handler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
+
+  // 监听鼠标移动和单击事件
+  // ... （绘制高度差三角形）
+
+  // 高度差计算
+  const height = Math.abs(trianArr[2] - trianArr[5]).toFixed(2);
+
+  H = this.viewer.entities.add({
+    name: 'lineZ',
+    position: Cartesian3.fromDegrees(
+      trianArr[0],
+      trianArr[1],
+      (trianArr[2] + trianArr[5]) / 2
+    ),
+    label: {
+      text: `高度差:${height}米`,
+      font: '45px 楷体',
+      fillColor: Color.WHITE,
+      outlineColor: Color.BLACK,
+      style: LabelStyle.FILL_AND_OUTLINE,
+      outlineWidth: 3,
+      scale: 0.5,
+      pixelOffset: new Cartesian2(0, -10),
+      backgroundColor: Color.fromCssColorString('rgba(0, 0, 0, 0.7)'),
+      backgroundPadding: new Cartesian2(10, 10),
+      verticalOrigin: VerticalOrigin.BOTTOM,
+    },
+  });
+}
+```
+
+### 三角测量实现
+
+同时测量水平距离、高度差和空间距离：
+
+```tsx
+/**
+ * 三角测量
+ * 测量两点之间的水平距离、高度差和空间距离
+ */
+measureTriangle(): void {
+  // 计算水平距离
+  const lineDistance = Cartesian3.distance(
+    Cartesian3.fromDegrees(trianArr[0], trianArr[1]),
+    Cartesian3.fromDegrees(trianArr[3], trianArr[4])
+  ).toFixed(2);
+
+  // 计算高度差
+  const height = Math.abs(trianArr[2] - trianArr[5]).toFixed(2);
+
+  // 计算空间距离（勾股定理）
+  const strLine = Math.sqrt(
+    parseFloat(lineDistance) ** 2 + parseFloat(height) ** 2
+  ).toFixed(2);
+
+  // 创建三条边的标注
+  X = this.viewer.entities.add({
+    name: 'lineX',
+    position: Cartesian3.fromDegrees(
+      (trianArr[0] + trianArr[3]) / 2,
+      (trianArr[1] + trianArr[4]) / 2,
+      Math.max(trianArr[2], trianArr[5])
+    ),
+    label: {
+      text: `水平距离:${lineDistance}米`,
+      // ... 标注样式
+    },
+  });
+
+  H = this.viewer.entities.add({
+    name: 'lineZ',
+    label: {
+      text: `高度差:${height}米`,
+      // ... 标注样式
+    },
+  });
+
+  Y = this.viewer.entities.add({
+    name: 'lineY',
+    label: {
+      text: `空间距离:${strLine}米`,
+      // ... 标注样式
+    },
+  });
+}
+```
+
+### 方位角测量实现
+
+测量两点之间的方位角和距离：
+
+```tsx
+/**
+ * 方位角测量
+ * 测量两点之间的方位角和距离
+ */
+measureAngle(): void {
+  // 计算北方向点
+  const localToWorldMatrix = Transforms.eastNorthUpToFixedFrame(
+    Cartesian3.fromDegrees(lon1, lat1)
+  );
+  const northPoint = Cartographic.fromCartesian(
+    Matrix4.multiplyByPoint(
+      localToWorldMatrix,
+      Cartesian3.fromElements(0, lineDistance, 0),
+      new Cartesian3()
+    )
+  );
+
+  // 计算方位角
+  const angle = this.courseAngle(lon1, lat1, lon2, lat2);
+
+  // 创建北方线（红色虚线）
+  Line1 = this.viewer.entities.add({
+    name: 'Angle1',
+    polyline: {
+      positions: Cartesian3.fromDegreesArray([lon1, lat1, npLon, npLat]),
+      width: 3,
+      material: new PolylineDashMaterialProperty({
+        color: Color.RED,
+      }),
+      clampToGround: true,
+    },
+  });
+
+  // 创建方向线（黄色箭头）
+  Line2 = this.viewer.entities.add({
+    name: 'Angle2',
+    polyline: {
+      positions: Cartesian3.fromDegreesArray([lon1, lat1, lon2, lat2]),
+      width: 10,
+      material: new PolylineArrowMaterialProperty(Color.YELLOW),
+      clampToGround: true,
+    },
+  });
+
+  // 创建文字标注
+  angleT = this.viewer.entities.add({
+    name: 'AngleT',
+    position: pArr[1],
+    label: {
+      text: `角度:${angle}°\n距离:${textDistance}`,
+      // ... 标注样式
+    },
+  });
+}
+```
+
+### 方位角计算
+
+基于大地坐标计算方位角：
+
+```tsx
+/**
+ * 计算方位角
+ */
+private courseAngle(
+  lngA: number,
+  latA: number,
+  lngB: number,
+  latB: number
+): number {
+  let dRotateAngle = Math.atan2(Math.abs(lngA - lngB), Math.abs(latA - latB));
+
+  if (lngB >= lngA) {
+    if (latB < latA) {
+      dRotateAngle = Math.PI - dRotateAngle;
+    }
+  } else {
+    if (latB >= latA) {
+      dRotateAngle = 2 * Math.PI - dRotateAngle;
+    } else {
+      dRotateAngle = Math.PI + dRotateAngle;
+    }
+  }
+
+  dRotateAngle = (dRotateAngle * 180) / Math.PI;
+  return Math.floor(dRotateAngle * 100) / 100;
+}
+```
+
+## 应用场景
+
+### 工程测绘
+
+- **距离测量**：测量建筑物、道路、管线等的长度
+- **面积测量**：计算土地、场地、建筑面积
+- **高程测量**：测量地形高差、坡度
+- **工程量计算**：估算土方、材料用量
+
+### 规划设计
+
+- **道路规划**：测量道路长度、坡度、转弯半径
+- **景观设计**：测量绿地面积、步道长度
+- **建筑设计**：测量建筑高度、间距、朝向
+- **市政规划**：测量管网长度、覆盖范围
+
+### 地形分析
+
+- **坡度分析**：计算地形坡度和坡向
+- **高程分析**：测量地形高差、等高线
+- **地形剖面**：生成地形剖面图
+- **汇水分析**：分析水流方向和汇水区域
+
+### 导航定位
+
+- **路径规划**：测量路径长度、方位角
+- **距离估算**：估算目的地距离
+- **方向指示**：指示目标方位
+- **位置标定**：标定特定位置的坐标
+
+### 应急救援
+
+- **距离测算**：快速测量救援距离
+- **区域划定**：划定警戒区域、搜救范围
+- **路线规划**：规划最短救援路线
+- **资源部署**：评估资源覆盖范围
+
+## 性能优化技巧
+
+### 地形采样优化
+
+1. **动态调整采样密度**
+
+```tsx
+// 根据距离动态调整采样点数量
+const s = geodesic.surfaceDistance;
+let num = Math.floor(s / 100);
+num = num > 200 ? 200 : num;  // 最多200个采样点
+num = num < 20 ? 20 : num;    // 最少20个采样点
+```
+
+2. **缓存采样结果**
+
+```tsx
+private heightCache = new Map<string, number>();
+
+private sampleHeight(cartographic: Cartographic): number {
+  const key = `${cartographic.longitude.toFixed(6)},${cartographic.latitude.toFixed(6)}`;
+
+  if (this.heightCache.has(key)) {
+    return this.heightCache.get(key)!;
+  }
+
+  const height = this.viewer.scene.sampleHeight(cartographic);
+  this.heightCache.set(key, height);
+
+  return height;
+}
+```
+
+### 实体管理优化
+
+1. **批量创建实体**
+
+```tsx
+// ✅ 推荐：批量创建
+viewer.entities.suspendEvents();
+
+for (const point of points) {
+  viewer.entities.add({
+    position: point,
+    point: { pixelSize: 5, color: Color.RED },
+  });
+}
+
+viewer.entities.resumeEvents();
+```
+
+2. **及时清理实体**
+
+```tsx
+clear(): void {
+  // 删除所有实体
+  for (const id of this.measureIds) {
+    this.viewer.entities.removeById(id);
+  }
+  this.measureIds.length = 0;
+
+  // 销毁事件处理器
+  if (this.handler && !this.handler.isDestroyed()) {
+    this.handler.destroy();
+    this.handler = null;
+  }
+
+  this.bMeasuring = false;
+  this.onMeasureEnd?.();
+}
+```
+
+### 坐标拾取优化
+
+1. **优先使用 pickPosition**
+
+```tsx
+// 优先拾取模型坐标（更快）
+let cartesian = this.viewer.scene.pickPosition(movement.position);
+
+// 如果没有模型，再拾取地形坐标
+if (!cartesian) {
+  const ray = this.viewer.camera.getPickRay(movement.position);
+  if (ray) {
+    cartesian = this.viewer.scene.globe.pick(ray, this.viewer.scene);
+  }
+}
+```
+
+2. **限制拾取频率**
+
+```tsx
+// 使用节流限制鼠标移动事件的处理频率
+private lastMoveTime = 0;
+private moveInterval = 50;  // 50ms 处理一次
+
+this.handler.setInputAction((movement) => {
+  const now = Date.now();
+  if (now - this.lastMoveTime < this.moveInterval) {
+    return;
+  }
+  this.lastMoveTime = now;
+
+  // 处理鼠标移动
+  // ...
+}, ScreenSpaceEventType.MOUSE_MOVE);
+```
+
+### 面积计算优化
+
+1. **简化多边形**
+
+```tsx
+// 对于复杂多边形，先简化再计算
+function simplifyPolygon(
+  points: Cartesian3[],
+  tolerance: number
+): Cartesian3[] {
+  // 使用 Douglas-Peucker 算法简化
+  // ...
+}
+
+const simplifiedPoints = simplifyPolygon(positions, 10);
+const area = this.getArea(tempPoints, simplifiedPoints);
+```
+
+2. **使用高效的三角剖分**
+
+```tsx
+// 使用耳切法（Ear Clipping）进行三角剖分
+function earClipping(polygon: Cartesian3[]): number[][] {
+  // 返回三角形索引数组
+  // ...
+}
+```
+
+## 常见问题
+
+### 测量结果不准确
+
+**原因**：地形数据未加载、采样密度不足或坐标系统不匹配。
+
+**解决方案**：
+
+```tsx
+// 1. 确保地形数据已加载
+CesiumTerrainProvider.fromUrl(terrainUrl)
+  .then((terrainProvider) => {
+    viewer.scene.terrainProvider = terrainProvider;
+
+    // 等待地形加载完成后再测量
+    terrainProvider.readyPromise.then(() => {
+      measureTool.measureGroundDistance();
+    });
+  });
+
+// 2. 增加采样密度
+const num = Math.floor(s / 50);  // 每50米一个采样点（原来是100米）
+
+// 3. 启用深度检测
+viewer.scene.globe.depthTestAgainstTerrain = true;
+```
+
+### 标注文字显示不清晰
+
+**原因**：字体大小不当、背景透明度问题或缩放层级问题。
+
+**解决方案**：
+
+```tsx
+// 1. 优化标注样式
+label: {
+  text: textDistance,
+  font: '18px sans-serif',
+  fillColor: Color.WHITE,
+  style: LabelStyle.FILL_AND_OUTLINE,
+  outlineWidth: 2,
+  outlineColor: Color.BLACK,
+  backgroundColor: Color.fromCssColorString('rgba(0, 0, 0, 0.7)'),
+  backgroundPadding: new Cartesian2(10, 10),
+  disableDepthTestDistance: Number.POSITIVE_INFINITY,  // 始终显示
+}
+
+// 2. 根据距离动态调整字体大小
+const cameraHeight = viewer.camera.positionCartographic.height;
+const fontSize = cameraHeight > 10000 ? 24 : 18;
+label.font = `${fontSize}px sans-serif`;
+```
+
+### 面积测量偏差大
+
+**原因**：三角剖分算法不当、地形采样不足。
+
+**解决方案**：
+
+```tsx
+// 1. 增加采样点数量
+for (let i = 1; i < num * 2; i++) {  // 加密采样
+  const res = geodesic.interpolateUsingSurfaceDistance(
+    (s / (num * 2)) * i,
+    new Cartographic()
+  );
+  res.height = this.viewer.scene.sampleHeight(res);
+  positions_.push(res);
+}
+
+// 2. 使用更精确的三角剖分算法
+// 使用 Delaunay 三角剖分代替简单的扇形剖分
+```
+
+### 鼠标拾取失败
+
+**原因**：相机角度过小、场景没有地形或模型。
+
+**解决方案**：
+
+```tsx
+// 完善的坐标拾取逻辑
+let cartesian = this.viewer.scene.pickPosition(movement.position);
+
+// 如果没有拾取到，尝试拾取地形
+if (!cartesian) {
+  const ray = this.viewer.camera.getPickRay(movement.position);
+  if (ray) {
+    cartesian = this.viewer.scene.globe.pick(ray, this.viewer.scene);
+  }
+}
+
+// 如果还是没有，使用椭球体求交
+if (!cartesian) {
+  const ray = this.viewer.camera.getPickRay(movement.position);
+  if (ray) {
+    cartesian = this.viewer.scene.globe.ellipsoid.intersectRay(ray);
+  }
+}
+
+// 最后的保护措施
+if (!cartesian) {
+  console.warn('无法拾取坐标，请调整相机角度或确保场景中有地形');
+  return;
+}
+```
+
+### 内存泄漏
+
+**原因**：实体未清理、事件处理器未销毁。
+
+**解决方案**：
+
+```tsx
+// 完整的清理函数
+clear(): void {
+  // 删除所有实体
+  for (const id of this.measureIds) {
+    try {
+      this.viewer.entities.removeById(id);
+    } catch (e) {
+      console.warn('Failed to remove entity:', id);
+    }
+  }
+  this.measureIds.length = 0;
+
+  // 销毁事件处理器
+  if (this.handler && !this.handler.isDestroyed()) {
+    this.handler.destroy();
+    this.handler = null;
+  }
+
+  // 清除缓存
+  this.heightCache?.clear();
+
+  this.bMeasuring = false;
+  this.onMeasureEnd?.();
+}
+
+// React 组件卸载时清理
+useEffect(() => {
+  return () => {
+    if (measureTool) {
+      measureTool.clear();
+    }
+    if (viewer && !viewer.isDestroyed()) {
+      viewer.destroy();
+    }
+  };
+}, []);
+```
+
+### 性能卡顿
+
+**原因**：实体过多、采样频率过高、地形数据复杂。
+
+**解决方案**：
+
+```tsx
+// 1. 限制同时存在的测量数量
+const MAX_MEASURES = 10;
+if (this.measureIds.length >= MAX_MEASURES * 10) {
+  // 清除旧的测量
+  const oldIds = this.measureIds.splice(0, MAX_MEASURES * 5);
+  for (const id of oldIds) {
+    this.viewer.entities.removeById(id);
+  }
+}
+
+// 2. 降低采样密度
+let num = Math.floor(s / 200);  // 每200米一个采样点
+num = Math.max(10, Math.min(100, num));  // 限制范围10-100
+
+// 3. 使用 LOD 策略
+const cameraHeight = viewer.camera.positionCartographic.height;
+const lodLevel = cameraHeight > 50000 ? 0 : cameraHeight > 10000 ? 1 : 2;
+const sampling = [500, 200, 100][lodLevel];
+```
+
+## 注意事项
+
+1. **地形数据**：地表距离和面积测量依赖地形数据，必须加载高精度地形
+2. **深度检测**：启用 `depthTestAgainstTerrain` 确保正确拾取地形坐标
+3. **单位转换**：注意距离单位（米/千米）和面积单位（平方米/平方公里）的转换
+4. **采样密度**：地表距离测量时，采样点数量影响精度和性能，需要平衡
+5. **资源清理**：测量完成后务必调用 `clear()` 方法清理资源
+6. **交互提示**：建议提供明确的交互提示（左键添加点、右键结束）
+7. **浏览器兼容性**：需要支持 WebGL 2.0 的现代浏览器
+8. **坐标精度**：使用双精度浮点数避免精度损失
+9. **异步操作**：地形采样是异步的，确保数据准备完成后再计算
+10. **并发测量**：不建议同时进行多种类型的测量，可能导致交互冲突
+
+## 参考资料
+
+- [Cesium Polyline API](https://cesium.com/learn/cesiumjs/ref-doc/PolylineGraphics.html)
+- [Cesium Polygon API](https://cesium.com/learn/cesiumjs/ref-doc/PolygonGraphics.html)
+- [Cesium EllipsoidGeodesic API](https://cesium.com/learn/cesiumjs/ref-doc/EllipsoidGeodesic.html)
+- [Cesium Scene API](https://cesium.com/learn/cesiumjs/ref-doc/Scene.html)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
