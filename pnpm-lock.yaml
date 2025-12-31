@@ -95,6 +95,9 @@ importers:
       gsap:
         specifier: ^3.14.2
         version: 3.14.2
+      hls.js:
+        specifier: ^1.6.15
+        version: 1.6.15
       leva:
         specifier: ^0.10.1
         version: 0.10.1(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
