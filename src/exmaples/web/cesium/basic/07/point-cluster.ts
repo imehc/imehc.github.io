@@ -274,8 +274,14 @@ export default class PointCluster {
 			this.removePostRenderListener();
 			this.removePostRenderListener = undefined;
 		}
-		this.viewer.scene.primitives.remove(this.billboards);
-		this.viewer.scene.primitives.remove(this.labels);
+		if (this.viewer && !this.viewer.isDestroyed() && this.viewer.scene) {
+			if (this.billboards) {
+				this.viewer.scene.primitives.remove(this.billboards);
+			}
+			if (this.labels) {
+				this.viewer.scene.primitives.remove(this.labels);
+			}
+		}
 		this.billboards = null;
 		this.labels = null;
 		this.circleCache = {};
