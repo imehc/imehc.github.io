@@ -1,7 +1,7 @@
 import {
 	Cartesian3,
-	EllipsoidTerrainProvider,
 	Math as CesiumMath,
+	EllipsoidTerrainProvider,
 	type MaterialProperty,
 	UrlTemplateImageryProvider,
 	Viewer,
@@ -10,6 +10,8 @@ import CesiumNavigation, {
 	type NavigationOptions,
 } from "cesium-navigation-es6";
 import { GUI } from "dat.gui";
+import Hls from "hls.js";
+import Video from "./video";
 
 /**
  * 视频投影示例
@@ -53,7 +55,7 @@ export function initViewer(el: HTMLElement) {
 
 	// 设置初始视角 (武汉区域 - 与视频投影位置一致)
 	viewer.camera.setView({
-		destination: Cartesian3.fromDegrees(114.260, 30.575, 500),
+		destination: Cartesian3.fromDegrees(114.26, 30.575, 500),
 		orientation: {
 			heading: CesiumMath.toRadians(0),
 			pitch: CesiumMath.toRadians(-45),
@@ -69,44 +71,75 @@ export function initViewer(el: HTMLElement) {
 	gui.domElement.style.left = "0";
 
 	// 视频控制状态
-	let currentVideoInstance: any = null;
+	let currentVideoInstance: Video = null;
 	let currentVideoElement: HTMLVideoElement | null = null;
+	let currentHls: Hls | null = null;
 
 	// 视频配置
 	const videoConfig = {
-		mode: 'video', // 'video' or 'liveVideo'
+		mode: "video", // 'video' or 'liveVideo'
 	};
 
 	// 清理当前视频
 	const cleanupCurrentVideo = () => {
-		if (currentVideoInstance) {
-			currentVideoInstance.clearAll();
-			currentVideoInstance = null;
+		// 1. 先销毁 HLS 实例
+		if (currentHls) {
+			try {
+				currentHls.destroy();
+			} catch (e) {
+				console.warn("HLS销毁失败:", e);
+			}
+			currentHls = null;
 		}
+
+		// 2. 清理视频元素
 		if (currentVideoElement) {
-			currentVideoElement.pause();
+			try {
+				currentVideoElement.pause();
+				currentVideoElement.src = "";
+				currentVideoElement.load();
+			} catch (e) {
+				console.warn("视频清理失败:", e);
+			}
 			currentVideoElement.remove();
 			currentVideoElement = null;
 		}
-		// 清除所有实体
-		viewer.entities.removeAll();
+
+		// 3. 清理视频投影实例（这会清理 primitives）
+		if (currentVideoInstance) {
+			try {
+				currentVideoInstance.clearAll();
+			} catch (e) {
+				console.warn("视频投影清理失败:", e);
+			}
+			currentVideoInstance = null;
+		}
+
+		// 4. 最后清除所有实体
+		try {
+			viewer.entities.removeAll();
+		} catch (e) {
+			console.warn("实体清理失败:", e);
+		}
 	};
 
 	// 加载视频的函数
 	const loadVideoMode = () => {
 		cleanupCurrentVideo();
-		if (videoConfig.mode === 'video') {
+		if (videoConfig.mode === "video") {
 			currentVideoElement = loadVideo(viewer, el);
 		} else {
 			const result = loadLiveVideo(viewer, el);
 			currentVideoInstance = result.videoInstance;
 			currentVideoElement = result.videoElement;
+			currentHls = result.hls;
 		}
 	};
 
 	// 添加GUI控制
-	gui.add(videoConfig, 'mode', ['video', 'liveVideo'])
-		.name('视频模式')
+	gui
+		.add(videoConfig, "mode", ["video", "liveVideo"])
+		.name("视频模式")
 		.onChange(() => {
 			loadVideoMode();
 		});
@@ -124,23 +157,22 @@ export function initViewer(el: HTMLElement) {
 
 function loadVideo(viewer: Viewer, container: HTMLElement): HTMLVideoElement {
 	// 示例视频URL，实际使用时需要替换为有效的视频URL
-	const videoUrl =
-		"/cesium/spatial-analysis/05/video.mp4";
-	const video = document.createElement('video');
-	video.id = 'video_dom';
-	video.preload = 'auto';
+	const videoUrl = "/cesium/spatial-analysis/05/video.mp4";
+	const video = document.createElement("video");
+	video.id = "video_dom";
+	video.preload = "auto";
 	video.autoplay = true;
 	video.loop = true;
 	video.muted = true; // 静音以允许自动播放
-	video.crossOrigin = 'anonymous'; // 允许跨域访问
-	video.style.display = 'none'; // 隐藏视频元素
-	video.style.transform = 'rotate(180deg)'; // 旋转180度
-	video.style.position = 'absolute';
+	video.crossOrigin = "anonymous"; // 允许跨域访问
+	video.style.display = "none"; // 隐藏视频元素
+	video.style.transform = "rotate(180deg)"; // 旋转180度
+	video.style.position = "absolute";
 
 	// 创建源元素
-	const source = document.createElement('source');
+	const source = document.createElement("source");
 	source.src = videoUrl;
-	source.type = 'video/mp4';
+	source.type = "video/mp4";
 
 	// 将源添加到视频元素
 	video.appendChild(source);
@@ -149,12 +181,15 @@ function loadVideo(viewer: Viewer, container: HTMLElement): HTMLVideoElement {
 	container.appendChild(video);
 
 	// 等待视频加载完成后创建多边形
-	video.addEventListener('loadedmetadata', () => {
-		video.play().then(() => {
-			createVideoPolygons(viewer, video);
-		}).catch(error => {
-			console.error('视频播放失败:', error);
-		});
+	video.addEventListener("loadedmetadata", () => {
+		video
+			.play()
+			.then(() => {
+				createVideoPolygons(viewer, video);
+			})
+			.catch((error) => {
+				console.error("视频播放失败:", error);
+			});
 	});
 
 	return video;
@@ -162,88 +197,108 @@ function loadVideo(viewer: Viewer, container: HTMLElement): HTMLVideoElement {
 
 function createVideoPolygons(viewer: Viewer, video: HTMLVideoElement) {
 	const lt = [
-		114.25985245208585, 30.5752892693654, 14.23,
-		114.25923491594841, 30.5752027998838, 13.62,
-		114.25922774520328, 30.5752225398922, 47.51,
-		114.25985290311769, 30.5753018567495, 47.57,
-		114.25985245208585, 30.5752892693617, 14.23
-	]
+		114.25985245208585, 30.5752892693654, 14.23, 114.25923491594841,
+		30.5752027998838, 13.62, 114.25922774520328, 30.5752225398922, 47.51,
+		114.25985290311769, 30.5753018567495, 47.57, 114.25985245208585,
+		30.5752892693617, 14.23,
+	];
 	viewer.entities.add({
 		polygon: {
 			hierarchy: Cartesian3.fromDegreesArrayHeights(lt),
 			material: video as unknown as MaterialProperty,
 			perPositionHeight: true,
-			outline: true
-		}
+			outline: true,
+		},
 	});
 
-	const pm = [114.26109123956515, 30.575196063095532, 114.26002868416131, 30.575029970052253,
-		114.25995067898559, 30.575610284720895, 114.26093508652325, 30.57571375633287, 114.26109123956515,
-		30.575196063095532
-	]
+	const pm = [
+		114.26109123956515, 30.575196063095532, 114.26002868416131,
+		30.575029970052253, 114.25995067898559, 30.575610284720895,
+		114.26093508652325, 30.57571375633287, 114.26109123956515,
+		30.575196063095532,
+	];
 
 	viewer.entities.add({
 		polygon: {
 			hierarchy: Cartesian3.fromDegreesArray(pm),
-			material: video as unknown as MaterialProperty
-		}
+			material: video as unknown as MaterialProperty,
+		},
 	});
 
 	viewer.zoomTo(viewer.entities);
 }
 
-function loadLiveVideo(viewer: Viewer, container: HTMLElement): { videoInstance: any; videoElement: HTMLVideoElement } {
+function loadLiveVideo(
+	viewer: Viewer,
+	container: HTMLElement,
+): { videoInstance: Video; videoElement: HTMLVideoElement; hls: Hls | null } {
 	// 创建视频元素用于HLS直播流
-	const videoElement = document.createElement('video');
-	videoElement.id = 'video_dom';
-	videoElement.preload = 'auto';
+	const videoElement = document.createElement("video");
+	videoElement.id = "video_dom";
+	videoElement.preload = "auto";
 	videoElement.autoplay = true;
 	videoElement.muted = true; // 静音以允许自动播放
 	videoElement.loop = true;
-	videoElement.style.display = 'none'; // 隐藏视频元素
-	videoElement.style.transform = 'rotate(180deg)'; // 旋转180度
-	videoElement.style.position = 'absolute';
+	videoElement.style.display = "none"; // 隐藏视频元素
+	videoElement.style.transform = "rotate(180deg)"; // 旋转180度
+	videoElement.style.position = "absolute";
 
 	// 添加到 DOM
 	container.appendChild(videoElement);
 
 	// HLS直播流地址 (示例地址，实际使用时需要替换为有效的HLS流地址)
-	const videoSrc = 'https://sqhls2.ys7.com:7989/v3/openlive/FX4619647_2_1.m3u8?expire=1778830562&id=844961679353290752&t=c843557c001d3a833dfb4f5ab347d319f3847d85b63fb1642bf52e754517a28a&ev=100&u=4bcf089e4d424b9583ac48430a7ef177';
+	const videoSrc =
+		// "https://sqhls2.ys7.com:7989/v3/openlive/FX4619647_2_1.m3u8?expire=1778830562&id=844961679353290752&t=c843557c001d3a833dfb4f5ab347d319f3847d85b63fb1642bf52e754517a28a&ev=100&u=4bcf089e4d424b9583ac48430a7ef177";
+		"https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
 
 	// 视频投影配置 (与参考HTML中的配置一致，但使用武汉附近的坐标)
 	const options = {
 		horizontalViewAngle: 60, // 水平视角
-		verticalViewAngle: 40,   // 垂直视角
-		video: "video_dom",       // 视频元素ID
-		viewPosition: Cartesian3.fromDegrees(114.260, 30.575, 515), // 观察位置
+		verticalViewAngle: 40, // 垂直视角
+		video: "video_dom", // 视频元素ID
+		viewPosition: Cartesian3.fromDegrees(114.26, 30.575, 515), // 观察位置
 		viewPositionEnd: Cartesian3.fromDegrees(114.252, 30.576, 270), // 观察终点
 	};
 
 	// 创建视频投影实例
-	const videoInstance = new video(viewer, options);
-	videoInstance.drawVideo();
+	const videoInstance = new Video(viewer, options);
+
+	// HLS实例
+	let hls: Hls | null = null;
 
 	// 使用HLS.js加载直播流
 	if (Hls.isSupported()) {
-		const hls = new Hls();
+		hls = new Hls();
 		hls.loadSource(videoSrc);
 		hls.attachMedia(videoElement);
 		hls.on(Hls.Events.MANIFEST_PARSED, () => {
-			videoElement.play().catch(error => {
-				console.error('HLS视频播放失败:', error);
-			});
+			videoElement
+				.play()
+				.then(() => {
+					// 视频开始播放后，才创建视频投影
+					videoInstance.drawVideo();
+				})
+				.catch((error) => {
+					console.error("HLS视频播放失败:", error);
+				});
 		});
-	} else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+	} else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
 		// Safari浏览器原生支持HLS
 		videoElement.src = videoSrc;
-		videoElement.addEventListener('loadedmetadata', () => {
-			videoElement.play().catch(error => {
-				console.error('视频播放失败:', error);
-			});
+		videoElement.addEventListener("loadedmetadata", () => {
+			videoElement
+				.play()
+				.then(() => {
+					// 视频开始播放后，才创建视频投影
+					videoInstance.drawVideo();
+				})
+				.catch((error) => {
+					console.error("视频播放失败:", error);
+				});
 		});
 	} else {
-		console.error('浏览器不支持HLS播放');
+		console.error("浏览器不支持HLS播放");
 	}
 
-	return { videoInstance, videoElement };
+	return { videoInstance, videoElement, hls };
 }
