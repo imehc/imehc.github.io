@@ -1,0 +1,890 @@
+---
+sidebar_position: 5
+title: 视频投影
+tags: [Javascript, TypeScript, Cesium]
+---
+
+import App from '@site/src/exmaples/web/cesium/spatial-analysis/05';
+
+# 视频投影
+
+本示例展示如何在 Cesium 中实现三维视频投影功能。支持将视频内容投影到三维地形表面或特定的几何体上，可以模拟监控摄像头视角、视频播放器投影、实时直播流投影等场景。该功能广泛应用于智慧城市监控、无人机视频回传、视频监控系统、虚拟演播厅等领域，为三维场景中的视频展示提供直观的可视化支持。
+
+<App />
+
+## 核心功能
+
+### 视频投影可视化
+
+使用 Cesium 的视锥体（Frustum）和材质系统创建三维视频投影效果：
+
+- **视锥体渲染**：通过 `FrustumGeometry` 和 `FrustumOutlineGeometry` 创建摄像机视锥体
+- **动态材质**：使用自定义着色器将视频纹理映射到投影表面
+- **实时更新**：视频帧实时更新到三维场景中
+- **平面投影**：支持将视频投影到指定的多边形平面
+- **视锥投影**：支持创建带视锥体可视化的投影效果
+
+### 多种投影模式
+
+灵活的视频投影方式：
+
+- **平面投影**：将视频直接映射到多边形表面，支持贴地和离地两种模式
+- **视锥体投影**：创建摄像机视锥体，模拟真实监控摄像头的视角范围
+- **交互式设置**：支持通过鼠标点击设置观察点和观察终点
+- **参数化配置**：支持通过参数直接指定观察位置和视角
+- **多视频支持**：可同时创建多个视频投影实例
+
+### 视频源支持
+
+支持多种视频源格式：
+
+- **本地视频**：支持 MP4、WebM 等常见视频格式
+- **HLS 直播流**：使用 HLS.js 支持 m3u8 格式的直播流
+- **跨域视频**：支持跨域视频资源的加载和播放
+- **视频控制**：支持播放、暂停、循环等视频控制功能
+- **自动播放**：支持视频自动播放和静音设置
+
+## 关键代码
+
+### 初始化 Viewer
+
+创建 Cesium Viewer 并配置基础设置（viewer.ts）：
+
+```tsx
+export function initViewer(el: HTMLElement) {
+  const viewer = new Viewer(el, {
+    baseLayerPicker: false,
+    animation: false,
+    timeline: false,
+    fullscreenButton: false,
+    geocoder: false,
+    homeButton: false,
+    infoBox: false,
+    sceneModePicker: false,
+    selectionIndicator: false,
+    navigationHelpButton: false,
+  });
+
+  viewer.scene.debugShowFramesPerSecond = true;
+  viewer.imageryLayers.remove(viewer.imageryLayers.get(0));
+  viewer.scene.terrainProvider = new EllipsoidTerrainProvider({});
+
+  // 开启深度检测
+  viewer.scene.globe.depthTestAgainstTerrain = true;
+
+  // 添加影像图层
+  const xyz = new UrlTemplateImageryProvider({
+    url: "//data.mars3d.cn/tile/img/{z}/{x}/{y}.jpg",
+  });
+  viewer.imageryLayers.addImageryProvider(xyz);
+
+  // 设置初始视角
+  viewer.camera.setView({
+    destination: Cartesian3.fromDegrees(114.26, 30.575, 500),
+    orientation: {
+      heading: CesiumMath.toRadians(0),
+      pitch: CesiumMath.toRadians(-45),
+      roll: 0.0,
+    },
+  });
+
+  return viewer;
+}
+```
+
+### 平面视频投影
+
+将视频投影到多边形平面：
+
+```tsx
+// 创建视频元素
+const video = document.createElement("video");
+video.id = "video_dom";
+video.preload = "auto";
+video.autoplay = true;
+video.loop = true;
+video.muted = true;
+video.crossOrigin = "anonymous";
+video.src = "/path/to/video.mp4";
+
+// 带高度的多边形投影（离地）
+const polygonWithHeight = [
+  114.25985245208585, 30.5752892693654, 14.23,
+  114.25923491594841, 30.5752027998838, 13.62,
+  114.25922774520328, 30.5752225398922, 47.51,
+  114.25985290311769, 30.5753018567495, 47.57,
+];
+
+viewer.entities.add({
+  polygon: {
+    hierarchy: Cartesian3.fromDegreesArrayHeights(polygonWithHeight),
+    material: video as unknown as MaterialProperty,
+    perPositionHeight: true,
+    outline: true,
+  },
+});
+
+// 贴地多边形投影
+const groundPolygon = [
+  114.26109123956515, 30.575196063095532,
+  114.26002868416131, 30.575029970052253,
+  114.25995067898559, 30.575610284720895,
+  114.26093508652325, 30.57571375633287,
+];
+
+viewer.entities.add({
+  polygon: {
+    hierarchy: Cartesian3.fromDegreesArray(groundPolygon),
+    material: video as unknown as MaterialProperty,
+  },
+});
+```
+
+### 视锥体投影实现
+
+创建带视锥体可视化的视频投影：
+
+```tsx
+// 视频投影配置
+const options = {
+  horizontalViewAngle: 60,  // 水平视角
+  verticalViewAngle: 40,    // 垂直视角
+  video: "video_dom",       // 视频元素ID
+  viewPosition: Cartesian3.fromDegrees(114.26, 30.575, 515),
+  viewPositionEnd: Cartesian3.fromDegrees(114.252, 30.576, 270),
+};
+
+// 创建视频投影实例
+const videoProjection = new Video(viewer, options);
+
+// 开始绘制视锥体投影
+videoProjection.drawVideo();
+```
+
+### Video 类核心实现
+
+视频投影类的核心实现（video.ts）：
+
+```tsx
+class Video {
+  private viewer: Viewer;
+  private lightCamera: Camera;
+  private horizontalViewAngle: number;
+  private verticalViewAngle: number;
+  private viewPosition: Cartesian3;
+  private viewPositionEnd: Cartesian3;
+  private viewDistance: number;
+  private viewHeading: number;
+  private viewPitch: number;
+  private video_dom?: HTMLVideoElement;
+
+  constructor(viewer: Viewer, config: VideoConfig) {
+    this.viewer = viewer;
+    this.config = config;
+  }
+
+  // 绘制视频投影
+  public drawVideo() {
+    const {
+      horizontalViewAngle = 60.0,
+      verticalViewAngle = 40.0,
+      viewPosition,
+      viewPositionEnd,
+    } = this.config;
+
+    this.horizontalViewAngle = horizontalViewAngle;
+    this.verticalViewAngle = verticalViewAngle;
+
+    // 获取视频DOM元素
+    if (typeof this.config.video === "string") {
+      this.video_dom = document.getElementById(
+        this.config.video
+      ) as HTMLVideoElement;
+    }
+
+    if (viewPosition && viewPositionEnd) {
+      this.viewPosition = viewPosition;
+      this.viewPositionEnd = viewPositionEnd;
+      this.viewDistance = Cartesian3.distance(
+        viewPosition,
+        viewPositionEnd
+      );
+      this.viewHeading = this.getHeading(
+        this.viewPosition,
+        this.viewPositionEnd
+      );
+      this.viewPitch = this.getPitch(
+        this.viewPosition,
+        this.viewPositionEnd
+      );
+      this.createLightCamera();
+    }
+  }
+
+  // 创建相机
+  private createLightCamera() {
+    this.lightCamera = new Camera(this.viewer.scene);
+    this.lightCamera.position = this.viewPosition;
+    this.lightCamera.frustum.near = this.viewDistance * 0.0001;
+    this.lightCamera.frustum.far = this.viewDistance;
+
+    const hr = CesiumMath.toRadians(this.horizontalViewAngle);
+    const vr = CesiumMath.toRadians(this.verticalViewAngle);
+    const aspectRatio =
+      (this.viewDistance * Math.tan(hr / 2) * 2) /
+      (this.viewDistance * Math.tan(vr / 2) * 2);
+
+    (this.lightCamera.frustum as PerspectiveFrustum).aspectRatio = aspectRatio;
+    (this.lightCamera.frustum as PerspectiveFrustum).fov =
+      hr > vr ? hr : vr;
+
+    this.lightCamera.setView({
+      destination: this.viewPosition,
+      orientation: {
+        heading: CesiumMath.toRadians(this.viewHeading || 0),
+        pitch: CesiumMath.toRadians(this.viewPitch || 0),
+        roll: 0,
+      },
+    });
+
+    this.drawFrustumOutline();
+  }
+
+  // 创建视锥线
+  private drawFrustumOutline() {
+    const scratchRight = new Cartesian3();
+    const scratchRotation = new Matrix3();
+    const scratchOrientation = new Quaternion();
+
+    const direction = this.lightCamera.directionWC;
+    const up = this.lightCamera.upWC;
+    let right = this.lightCamera.rightWC;
+    right = Cartesian3.negate(right, scratchRight);
+
+    const rotation = scratchRotation;
+    Matrix3.setColumn(rotation, 0, right, rotation);
+    Matrix3.setColumn(rotation, 1, up, rotation);
+    Matrix3.setColumn(rotation, 2, direction, rotation);
+
+    const orientation = Quaternion.fromRotationMatrix(
+      rotation,
+      scratchOrientation
+    );
+
+    // 创建视锥体几何
+    const frustum = this.lightCamera.frustum as PerspectiveFrustum;
+    const newObj = frustum.clone();
+    newObj.near = newObj.far - 0.01;
+
+    const videoGeometryInstance = new GeometryInstance({
+      geometry: new FrustumGeometry({
+        frustum: newObj,
+        origin: this.viewPosition,
+        orientation: orientation,
+      }),
+    });
+
+    const primitive = new Primitive({
+      geometryInstances: [videoGeometryInstance],
+      appearance: this.createAppearance(),
+    });
+
+    this.viewer.scene.primitives.add(primitive);
+  }
+
+  // 清除所有视频投影
+  public clearAll() {
+    const entities = this.viewer.entities.values;
+    for (let i = 0; i < entities.length; i++) {
+      if (entities[i].name === "video") {
+        this.viewer.entities.remove(entities[i]);
+        i--;
+      }
+    }
+
+    this.videos.forEach((v) => {
+      if (v && !v.isDestroyed()) {
+        this.viewer.scene.primitives.remove(v);
+        v.destroy();
+      }
+    });
+    this.videos = [];
+  }
+}
+```
+
+### 自定义着色器材质
+
+创建视频投影的自定义材质：
+
+```tsx
+private createAppearance() {
+  const source = `czm_material czm_getMaterial(czm_materialInput materialInput)
+  {
+    czm_material material = czm_getDefaultMaterial(materialInput);
+    vec2 st = materialInput.st;
+    vec4 colorImage = texture(image, vec2(st.s, st.t));
+    vec4 maskImage = texture(tmask, vec2(st.s, st.t));
+    material.alpha = colorImage.a * color.a * maskImage.r;
+    material.diffuse = colorImage.rgb * color.rgb;
+    return material;
+  }`;
+
+  const material = new Material({
+    fabric: {
+      type: "custome_1",
+      uniforms: {
+        color: new Color(1.0, 1.0, 1.0, 1.0),
+        image: "data:image/...",  // 默认纹理
+        tmask: "data:image/...",   // 遮罩纹理
+      },
+      source: source,
+    },
+  });
+
+  // 将视频设置为纹理
+  material.uniforms.image = this.video_dom;
+
+  const appearance = new EllipsoidSurfaceAppearance({
+    material: material,
+    flat: true,
+    renderState: {
+      cull: {
+        enabled: false,
+      },
+      depthTest: {
+        enabled: false,
+      },
+    },
+  });
+
+  return appearance;
+}
+```
+
+### HLS 直播流支持
+
+使用 HLS.js 加载直播流：
+
+```tsx
+function loadLiveVideo(viewer: Viewer, container: HTMLElement) {
+  const videoElement = document.createElement("video");
+  videoElement.id = "video_dom";
+  videoElement.autoplay = true;
+  videoElement.muted = true;
+
+  container.appendChild(videoElement);
+
+  const videoSrc = "https://example.com/live/stream.m3u8";
+
+  if (Hls.isSupported()) {
+    const hls = new Hls();
+    hls.loadSource(videoSrc);
+    hls.attachMedia(videoElement);
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      videoElement.play().then(() => {
+        // 创建视频投影
+        const videoProjection = new Video(viewer, {
+          video: "video_dom",
+          viewPosition: Cartesian3.fromDegrees(114.26, 30.575, 515),
+          viewPositionEnd: Cartesian3.fromDegrees(114.252, 30.576, 270),
+        });
+        videoProjection.drawVideo();
+      });
+    });
+  } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
+    // Safari 原生支持
+    videoElement.src = videoSrc;
+    videoElement.addEventListener("loadedmetadata", () => {
+      videoElement.play();
+    });
+  }
+}
+```
+
+### 偏航角和俯仰角计算
+
+计算摄像机的方向角度：
+
+```tsx
+// 获取偏航角（Heading）
+private getHeading(fromPosition: Cartesian3, toPosition: Cartesian3) {
+  const finalPosition = new Cartesian3();
+  const matrix4 = Transforms.eastNorthUpToFixedFrame(fromPosition);
+  Matrix4.inverse(matrix4, matrix4);
+  Matrix4.multiplyByPoint(matrix4, toPosition, finalPosition);
+  Cartesian3.normalize(finalPosition, finalPosition);
+  return CesiumMath.toDegrees(Math.atan2(finalPosition.x, finalPosition.y));
+}
+
+// 获取俯仰角（Pitch）
+private getPitch(fromPosition: Cartesian3, toPosition: Cartesian3) {
+  const finalPosition = new Cartesian3();
+  const matrix4 = Transforms.eastNorthUpToFixedFrame(fromPosition);
+  Matrix4.inverse(matrix4, matrix4);
+  Matrix4.multiplyByPoint(matrix4, toPosition, finalPosition);
+  Cartesian3.normalize(finalPosition, finalPosition);
+  return CesiumMath.toDegrees(Math.asin(finalPosition.z));
+}
+```
+
+## 应用场景
+
+### 智慧城市监控
+
+- **监控摄像头可视化**：显示城市监控摄像头的覆盖范围和实时画面
+- **视频监控系统**：集成多个监控点的视频流到三维地图中
+- **安防巡检**：可视化展示安防摄像头的监控区域
+- **交通监控**：展示路口监控摄像头的视角和实时交通状况
+
+### 无人机应用
+
+- **无人机视频回传**：实时显示无人机摄像头拍摄的画面
+- **飞行路径回放**：回放无人机飞行过程中录制的视频
+- **视角模拟**：模拟无人机在不同位置和角度的视野范围
+- **巡检记录**：展示无人机巡检过程中的视频记录
+
+### 虚拟演播
+
+- **虚拟演播厅**：在三维场景中投影视频内容
+- **展览展示**：在虚拟展厅中播放展品视频
+- **会议系统**：在虚拟会议室中投影演讲者画面
+- **教育培训**：在三维教学场景中播放教学视频
+
+### 军事应用
+
+- **战场侦察**：显示侦察设备拍摄的实时画面
+- **目标跟踪**：可视化跟踪目标的监控视频
+- **模拟训练**：在训练场景中投影模拟视频
+- **态势感知**：集成多个视频源提升战场态势感知
+
+### 应急指挥
+
+- **现场视频**：在指挥中心三维地图上显示现场视频
+- **应急响应**：实时查看应急现场的监控画面
+- **灾害评估**：通过视频投影评估灾害影响范围
+- **救援指挥**：协调多个救援点的视频信息
+
+## 性能优化技巧
+
+### 视频资源优化
+
+1. **视频压缩**
+
+```tsx
+// 使用适当的视频编码和分辨率
+const videoConfig = {
+  width: 1280,      // 不要使用过高的分辨率
+  height: 720,
+  bitrate: 2000000, // 控制码率
+  codec: "h264",    // 使用高效的编码格式
+};
+```
+
+2. **视频预加载**
+
+```tsx
+// 预加载视频以减少首次播放延迟
+video.preload = "auto";
+
+// 监听加载进度
+video.addEventListener("progress", (e) => {
+  const loaded = video.buffered.length > 0
+    ? video.buffered.end(0) / video.duration
+    : 0;
+  console.log(`加载进度: ${(loaded * 100).toFixed(2)}%`);
+});
+```
+
+### 渲染性能优化
+
+1. **控制投影数量**
+
+```tsx
+// ❌ 避免：创建过多视频投影
+for (let i = 0; i < 100; i++) {
+  createVideoProjection();
+}
+
+// ✅ 推荐：限制同时显示的投影数量
+const MAX_PROJECTIONS = 5;
+if (currentProjections.length < MAX_PROJECTIONS) {
+  createVideoProjection();
+} else {
+  console.warn("达到最大投影数量限制");
+}
+```
+
+2. **视锥体简化**
+
+```tsx
+// 根据距离动态调整视锥体精度
+viewer.camera.changed.addEventListener(() => {
+  const distance = Cartesian3.distance(
+    viewer.camera.position,
+    projectionPosition
+  );
+
+  if (distance > 1000) {
+    // 距离远时使用简化的视锥体
+    updateFrustumDetail("low");
+  } else {
+    // 距离近时使用详细的视锥体
+    updateFrustumDetail("high");
+  }
+});
+```
+
+### 内存管理优化
+
+1. **及时清理资源**
+
+```tsx
+// 完整的清理函数
+const cleanupVideo = () => {
+  // 1. 停止并清理视频
+  if (videoElement) {
+    videoElement.pause();
+    videoElement.src = "";
+    videoElement.load();
+    videoElement.remove();
+  }
+
+  // 2. 销毁HLS实例
+  if (hls) {
+    hls.destroy();
+    hls = null;
+  }
+
+  // 3. 清理投影实例
+  if (videoProjection) {
+    videoProjection.clearAll();
+    videoProjection = null;
+  }
+
+  // 4. 移除实体
+  viewer.entities.removeAll();
+};
+
+// React组件卸载时清理
+useEffect(() => {
+  return () => {
+    cleanupVideo();
+    if (viewer && !viewer.isDestroyed()) {
+      viewer.destroy();
+    }
+  };
+}, []);
+```
+
+2. **视频元素复用**
+
+```tsx
+// ✅ 推荐：复用视频元素
+let videoElement: HTMLVideoElement | null = null;
+
+function getOrCreateVideo() {
+  if (!videoElement) {
+    videoElement = document.createElement("video");
+    videoElement.id = "video_dom";
+    // ... 其他配置
+  }
+  return videoElement;
+}
+```
+
+### HLS 流优化
+
+1. **HLS 配置优化**
+
+```tsx
+// 优化HLS配置以提升性能
+const hls = new Hls({
+  maxBufferLength: 10,        // 最大缓冲长度（秒）
+  maxMaxBufferLength: 20,     // 最大缓冲长度上限
+  maxBufferSize: 60 * 1000 * 1000,  // 最大缓冲大小(字节)
+  maxBufferHole: 0.5,         // 最大缓冲间隙
+  lowLatencyMode: true,       // 低延迟模式
+  backBufferLength: 10,       // 后台缓冲长度
+});
+```
+
+2. **错误处理和重连**
+
+```tsx
+hls.on(Hls.Events.ERROR, (event, data) => {
+  if (data.fatal) {
+    switch (data.type) {
+      case Hls.ErrorTypes.NETWORK_ERROR:
+        console.log("网络错误，尝试恢复");
+        hls.startLoad();
+        break;
+      case Hls.ErrorTypes.MEDIA_ERROR:
+        console.log("媒体错误，尝试恢复");
+        hls.recoverMediaError();
+        break;
+      default:
+        console.log("无法恢复的错误");
+        hls.destroy();
+        break;
+    }
+  }
+});
+```
+
+### 着色器优化
+
+1. **简化着色器代码**
+
+```tsx
+// ✅ 推荐：简化的着色器
+const simpleSource = `
+czm_material czm_getMaterial(czm_materialInput materialInput) {
+  czm_material material = czm_getDefaultMaterial(materialInput);
+  vec4 color = texture(image, materialInput.st);
+  material.diffuse = color.rgb;
+  material.alpha = color.a;
+  return material;
+}`;
+```
+
+2. **避免不必要的计算**
+
+```tsx
+// ❌ 避免：在着色器中进行复杂计算
+// ✅ 推荐：在CPU端预计算，通过uniform传递
+material.uniforms.precomputedValue = calculateValue();
+```
+
+## 常见问题
+
+### 视频不显示
+
+**原因**：视频未加载完成、跨域问题、或材质配置错误。
+
+**解决方案**：
+
+```tsx
+// 1. 确保视频加载完成
+video.addEventListener("loadedmetadata", () => {
+  console.log("视频元数据已加载");
+  createVideoProjection();
+});
+
+// 2. 检查跨域设置
+video.crossOrigin = "anonymous";
+
+// 3. 确保视频元素正确关联
+const videoElement = document.getElementById("video_dom");
+if (!videoElement) {
+  console.error("视频元素未找到");
+}
+
+// 4. 检查材质配置
+material.uniforms.image = videoElement;
+```
+
+### 视频播放卡顿
+
+**原因**：视频码率过高、缓冲不足、或渲染性能问题。
+
+**解决方案**：
+
+```tsx
+// 1. 降低视频分辨率和码率
+// 使用工具压缩视频，推荐分辨率: 1280x720
+
+// 2. 增加缓冲
+if (Hls.isSupported()) {
+  const hls = new Hls({
+    maxBufferLength: 30,
+    maxMaxBufferLength: 60,
+  });
+}
+
+// 3. 监控性能
+viewer.scene.debugShowFramesPerSecond = true;
+
+// 4. 减少投影数量
+if (fps < 30) {
+  reduceProjectionCount();
+}
+```
+
+### HLS 流无法播放
+
+**原因**：浏览器不支持、流地址错误、或网络问题。
+
+**解决方案**：
+
+```tsx
+// 1. 检查浏览器支持
+if (!Hls.isSupported()) {
+  if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    // Safari原生支持
+    video.src = hlsUrl;
+  } else {
+    console.error("浏览器不支持HLS");
+  }
+}
+
+// 2. 验证流地址
+fetch(hlsUrl)
+  .then(response => {
+    if (!response.ok) {
+      console.error("流地址无效");
+    }
+  })
+  .catch(error => {
+    console.error("网络错误:", error);
+  });
+
+// 3. 添加错误处理
+hls.on(Hls.Events.ERROR, (event, data) => {
+  console.error("HLS错误:", data);
+  if (data.fatal) {
+    handleFatalError(data);
+  }
+});
+```
+
+### 视锥体显示不正确
+
+**原因**：相机参数设置错误、坐标系统问题、或视角计算错误。
+
+**解决方案**：
+
+```tsx
+// 1. 验证坐标
+console.log("观察点:", viewPosition);
+console.log("观察终点:", viewPositionEnd);
+
+// 2. 检查距离
+const distance = Cartesian3.distance(viewPosition, viewPositionEnd);
+console.log("距离:", distance);
+if (distance < 1 || distance > 10000) {
+  console.warn("距离可能不合理");
+}
+
+// 3. 调整视角参数
+const config = {
+  horizontalViewAngle: 60,  // 尝试不同的角度
+  verticalViewAngle: 40,
+};
+
+// 4. 确保相机设置正确
+lightCamera.frustum.near = distance * 0.0001;
+lightCamera.frustum.far = distance;
+```
+
+### 内存泄漏
+
+**原因**：视频元素未清理、事件监听器未移除、或 Primitive 未销毁。
+
+**解决方案**：
+
+```tsx
+// 完整的清理流程
+const cleanup = () => {
+  // 1. 清理HLS
+  if (hls && !hls.destroyed) {
+    hls.destroy();
+    hls = null;
+  }
+
+  // 2. 清理视频元素
+  if (videoElement) {
+    videoElement.pause();
+    videoElement.removeAttribute("src");
+    videoElement.load();
+
+    // 移除所有事件监听器
+    const newVideo = videoElement.cloneNode(true);
+    videoElement.parentNode?.replaceChild(newVideo, videoElement);
+
+    videoElement.remove();
+    videoElement = null;
+  }
+
+  // 3. 清理 Primitives
+  primitives.forEach(primitive => {
+    if (!primitive.isDestroyed()) {
+      viewer.scene.primitives.remove(primitive);
+      primitive.destroy();
+    }
+  });
+  primitives = [];
+
+  // 4. 清理实体
+  viewer.entities.removeAll();
+};
+```
+
+### 视频旋转问题
+
+**原因**：视频方向不正确，需要旋转或翻转。
+
+**解决方案**：
+
+```tsx
+// 1. CSS旋转
+video.style.transform = "rotate(180deg)";
+
+// 2. 使用 canvas 处理
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d");
+canvas.width = video.videoWidth;
+canvas.height = video.videoHeight;
+
+function drawRotatedVideo() {
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(Math.PI); // 旋转180度
+  ctx.drawImage(video, -video.videoWidth / 2, -video.videoHeight / 2);
+  ctx.restore();
+}
+
+// 使用canvas作为纹理
+material.uniforms.image = canvas;
+```
+
+### 跨域问题
+
+**原因**：视频服务器未设置正确的 CORS 头。
+
+**解决方案**：
+
+```tsx
+// 1. 设置 crossOrigin
+video.crossOrigin = "anonymous";
+
+// 2. 服务器端设置 CORS 头
+// Access-Control-Allow-Origin: *
+// Access-Control-Allow-Methods: GET, OPTIONS
+
+// 3. 使用代理
+const proxyUrl = "/api/video-proxy?url=" + encodeURIComponent(videoUrl);
+video.src = proxyUrl;
+```
+
+## 注意事项
+
+1. **浏览器兼容性**：HLS.js 需要支持 Media Source Extensions 的浏览器，Safari 原生支持 HLS
+2. **视频格式**：推荐使用 H.264 编码的 MP4 格式，确保浏览器兼容性
+3. **跨域设置**：加载跨域视频时必须设置 `crossOrigin="anonymous"`
+4. **自动播放策略**：现代浏览器限制自动播放，需要设置 `muted=true`
+5. **资源清理**：组件卸载时务必清理视频元素、HLS 实例和 Primitive
+6. **性能考虑**：避免同时创建过多视频投影，建议不超过 5 个
+7. **视频分辨率**：建议使用 1280x720 或更低的分辨率，避免性能问题
+8. **深度检测**：启用 `depthTestAgainstTerrain` 确保投影正确遮挡地形
+9. **视锥体参数**：合理设置 `near` 和 `far` 参数，避免视锥体过大或过小
+10. **直播延迟**：HLS 流通常有 3-10 秒延迟，可启用低延迟模式优化
+
+## 参考资料
+
+- [Cesium Material API](https://cesium.com/learn/cesiumjs/ref-doc/Material.html)
+- [Cesium FrustumGeometry API](https://cesium.com/learn/cesiumjs/ref-doc/FrustumGeometry.html)
+- [Cesium Primitive API](https://cesium.com/learn/cesiumjs/ref-doc/Primitive.html)
+- [HLS.js Documentation](https://github.com/video-dev/hls.js/)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
