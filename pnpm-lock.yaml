@@ -101,6 +101,9 @@ importers:
       leva:
         specifier: ^0.10.1
         version: 0.10.1(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      mersenne-twister:
+        specifier: ^1.1.0
+        version: 1.1.0
       meshline:
         specifier: ^3.3.1
         version: 3.3.1(three@0.182.0)
@@ -131,6 +134,9 @@ importers:
       three:
         specifier: ^0.182.0
         version: 0.182.0
+      urijs:
+        specifier: ^1.19.11
+        version: 1.19.11
       zustand:
         specifier: ^5.0.9
         version: 5.0.9(@types/react@19.2.7)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))

@@ -1,0 +1,248 @@
+---
+sidebar_position: 12
+title: 场景
+tags: [Javascript]
+---
+
+import App from '@site/src/exmaples/web/cesium/basic/12';
+import BrowserOnly from '@docusaurus/BrowserOnly';
+import Loading from '@site/src/exmaples/web/componets/Loading'
+
+# 场景
+
+本示例展示如何在 Cesium 中实现丰富的天气和场景效果,包括雨雪天气、闪电效果、动态云层、自定义天空盒、近地天空盒以及背景图片设置,并通过 GUI 控制面板实现多种场景效果的动态切换。
+
+<App />
+
+## 核心功能
+
+### 天气效果系统
+
+示例实现了以下天气效果:
+
+- **雨天效果**:使用粒子系统模拟降雨
+- **雪天效果**:模拟飘雪场景
+- **闪电效果**:动态生成闪电
+
+### 天空盒系统
+
+支持多种天空盒渲染方式:
+
+- **外太空天空盒**:使用星空纹理创建宇宙背景,适合高空视角
+- **近地天空盒**:根据相机高度自动切换的近地天空盒,提供更真实的地面视角
+  - 蓝天主题:晴朗天气效果
+  - 晴天主题:明亮阳光效果
+  - 晚霞主题:日落黄昏效果
+- **高度感知**:近地天空盒在 50km 以下自动显示,超过后自动切换
+
+### 云层渲染
+
+实现了基于 Billboard 的动态云层系统:
+
+```tsx
+const cloud = new Cloud(viewer);
+cloud.update(xScale, yScale, brightness);
+```
+
+支持实时调整云层参数:
+- **X轴缩放**:控制云层的横向分布(1-100)
+- **Y轴缩放**:控制云层的纵向分布(1-100)
+- **亮度调节**:调整云层的明暗程度(0-2)
+
+### 背景图片设置
+
+支持使用自定义图片作为场景背景:
+
+```tsx
+viewer.scene.canvas.style.backgroundImage = "url('image.jpg')";
+viewer.scene.skyBox.show = false;
+viewer.scene.backgroundColor = new Color(0.0, 0.0, 0.0, 0.0);
+```
+
+## 关键代码
+
+### 初始化 Viewer
+
+```tsx
+const viewer = new Viewer(el, {
+  baseLayerPicker: false,
+  animation: false,
+  timeline: false,
+  fullscreenButton: false,
+  geocoder: false,
+  homeButton: false,
+  infoBox: false,
+  sceneModePicker: false,
+  selectionIndicator: false,
+  navigationHelpButton: false,
+  contextOptions: {
+    webgl: {
+      alpha: true, // 启用透明背景
+    },
+  },
+});
+
+viewer.scene.globe.depthTestAgainstTerrain = true;
+viewer.scene.debugShowFramesPerSecond = true;
+```
+
+### 天气效果实现
+
+```tsx
+// 创建雨雪效果
+const weather = new Weather(viewer, {
+  name: "雨",
+  type: "rain"
+});
+
+// 切换为雪天
+weather.changeWeather({
+  name: "雪",
+  type: "snow"
+});
+
+// 移除天气效果
+weather.removePostProcessStage();
+```
+
+### 闪电效果
+
+```tsx
+const lightning = new Lightning(viewer);
+lightning.add({
+  mix_factor: 0.35,    // 混合因子,控制闪电亮度
+  fall_interval: 0.8,  // 闪电间隔时间(秒)
+});
+
+// 销毁闪电效果
+lightning.destroy();
+```
+
+### 自定义天空盒
+
+```tsx
+const skyBox = new SkyBox(viewer);
+skyBox.customSkyBox({
+  positiveX: "path/to/px.jpg",
+  negativeX: "path/to/mx.jpg",
+  positiveY: "path/to/py.jpg",
+  negativeY: "path/to/my.jpg",
+  positiveZ: "path/to/pz.jpg",
+  negativeZ: "path/to/mz.jpg",
+});
+```
+
+### 近地天空盒
+
+```tsx
+skyBox.skyBoxOnGround({
+  sources: {
+    positiveX: "path/to/Right.jpg",
+    negativeX: "path/to/Left.jpg",
+    positiveY: "path/to/Front.jpg",
+    negativeY: "path/to/Back.jpg",
+    positiveZ: "path/to/Up.jpg",
+    negativeZ: "path/to/Down.jpg",
+  },
+  maxHeight: 50000, // 在 50km 以下显示近地天空盒
+});
+```
+
+### 动态云层
+
+```tsx
+const cloud = new Cloud(viewer);
+
+// 更新云层参数
+cloud.update(
+  25,  // X轴缩放
+  12,  // Y轴缩放
+  1.0  // 亮度
+);
+
+// 销毁云层
+cloud.destroy();
+```
+
+### 场景切换管理
+
+```tsx
+function removeAll(weather: Weather | null, skyBox: SkyBox | null) {
+  if (weather) {
+    weather.removePostProcessStage();
+  }
+  if (skyBox) {
+    skyBox.removeCustomSkyBox();
+  }
+  if (cloud) {
+    cloud.destroy();
+  }
+  if (lightning) {
+    lightning.destroy();
+  }
+  viewer.scene.canvas.style.backgroundImage = "";
+  viewer.scene.skyBox.show = true;
+  viewer.scene.backgroundColor = Color.BLACK;
+}
+```
+
+## 应用场景
+
+### 气象可视化
+
+- **天气预报展示**:实时展示降雨、降雪等天气现象,提升预报直观性
+- **气象灾害模拟**:模拟暴雨、暴雪、雷暴等极端天气,用于灾害预警
+- **气候变化研究**:展示不同气候条件下的环境变化
+- **气象数据可视化**:将气象观测数据转化为三维可视化场景
+
+### 应急管理
+
+- **应急演练场景**:模拟恶劣天气条件下的应急响应场景
+- **灾害预案制定**:为不同天气灾害制定应急预案和疏散路线
+- **风险评估**:评估极端天气对城市设施的影响
+- **指挥调度**:为应急指挥提供直观的环境态势展示
+
+### 游戏与娱乐
+
+- **游戏场景设计**:为游戏添加动态天气和昼夜变化效果
+- **虚拟现实体验**:创建沉浸式的 VR/AR 环境效果
+- **影视预览**:为影视制作提供场景氛围预览
+- **主题公园**:用于主题公园的互动展示和体验项目
+
+### 城市规划与建设
+
+- **方案展示**:在不同天气和时段展示城市规划方案
+- **景观设计**:预览建筑和景观在不同环境下的效果
+- **照明设计**:评估城市照明在不同天气条件下的效果
+- **环境影响评估**:分析建设项目对局部气候的影响
+
+### 教育培训
+
+- **气象教学**:用于气象学教学和科普教育
+- **驾驶培训**:模拟恶劣天气下的驾驶场景
+- **飞行训练**:为飞行员提供不同天气条件的模拟训练
+- **安全培训**:培训人员在恶劣天气下的安全意识
+
+## 注意事项
+
+1. **性能优化**:天气效果和粒子系统会消耗较多 GPU 资源,需要根据设备性能调整效果强度
+2. **资源清理**:切换场景时务必清理之前的效果实例,避免内存泄漏
+   ```tsx
+   weather?.removePostProcessStage();
+   skyBox?.removeCustomSkyBox();
+   cloud?.destroy();
+   lightning?.destroy();
+   ```
+3. **纹理加载**:天空盒需要加载 6 张纹理图片,注意图片大小和加载时间
+4. **相机控制**:不同场景需要设置合适的相机位置和角度,以获得最佳视觉效果
+5. **WebGL 上下文**:使用背景图片时需要启用 `alpha: true` 以支持透明背景
+6. **近地天空盒高度**:根据实际需求调整 `maxHeight` 参数,避免在不合适的高度显示近地天空盒
+7. **帧率监控**:复杂场景效果会影响帧率,建议开启 `debugShowFramesPerSecond` 进行监控
+8. **组件清理**:页面卸载时记得销毁 Viewer、GUI 和所有效果实例
+
+## 参考资料
+
+- [Cesium Scene 官方文档](https://cesium.com/learn/cesiumjs/ref-doc/Scene.html)
+- [Cesium PostProcessStage 官方文档](https://cesium.com/learn/cesiumjs/ref-doc/PostProcessStage.html)
+- [Cesium SkyBox 官方文档](https://cesium.com/learn/cesiumjs/ref-doc/SkyBox.html)
+- [Cesium Examples](https://github.com/jiawanlong/Cesium-Examples)
