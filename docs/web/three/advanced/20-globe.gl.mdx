@@ -1,0 +1,1024 @@
+---
+sidebar_position: 20
+title: Globe.gl
+tags: [Javascript, Three]
+---
+
+import App from '@site/src/exmaples/web/three/advanced/20';
+import BrowserOnly from '@docusaurus/BrowserOnly';
+import Loading from '@site/src/exmaples/web/componets/Loading'
+
+# Globe.gl
+
+本示例展示如何使用 Globe.gl 在 Three.js 中实现三维地球可视化功能。Globe.gl 是一个基于 WebGL 的 3D 地球可视化库,支持多种数据可视化方式,包括点标记、弧线连接、六边形网格、热力图、路径绘制等。该库提供了 `three-globe`、`globe.gl` 和 `react-globe.gl` 三个版本,分别适用于 Three.js 原生、纯 JavaScript 和 React 框架。广泛应用于地理数据可视化、网络拓扑展示、历史事件追溯、实时监控系统等领域。
+
+<BrowserOnly fallback={<Loading/>}>
+  {() => <App />}
+</BrowserOnly>
+
+## 核心功能
+
+### 点数据可视化
+
+使用 `pointsData()` 在地球表面渲染点标记:
+
+- **数据配置**: 支持经纬度坐标、颜色、大小、高度等属性配置
+- **动态属性**: 通过 `pointColor()`、`pointAltitude()`、`pointRadius()` 设置点的视觉属性
+- **交互支持**: 支持点击、悬停事件和自定义标签
+- **性能优化**: 使用 `pointsMerge(true)` 合并点几何体以提升性能
+- **动画效果**: 支持点的动态添加、移除和属性过渡动画
+
+### 弧线连接
+
+使用 `arcsData()` 绘制地理位置间的连接弧线:
+
+- **起止点配置**: 通过 `arcStartLat/Lng()` 和 `arcEndLat/Lng()` 设置弧线起止点
+- **颜色渐变**: 支持单色或双色渐变,可设置透明度
+- **虚线动画**: 通过 `arcDashLength()`、`arcDashGap()` 和 `arcDashAnimateTime()` 创建动画效果
+- **曲线高度**: 使用 `arcAltitude()` 和 `arcAltitudeAutoScale()` 控制弧线高度
+- **标签显示**: 通过 `arcLabel()` 添加鼠标悬停标签
+
+### 六边形多边形
+
+使用 `hexPolygonsData()` 将 GeoJSON 数据渲染为六边形网格:
+
+- **GeoJSON 支持**: 接受标准 GeoJSON Feature 数据格式
+- **分辨率控制**: 通过 `hexPolygonResolution()` 设置六边形细分级别
+- **样式配置**: 支持颜色、边距、高度等属性配置
+- **点状模式**: 使用 `hexPolygonUseDots(true)` 渲染为点状六边形
+- **交互标签**: 通过 `hexPolygonLabel()` 显示国家、人口等信息
+
+### 热力图与等值线
+
+使用 `heatmapsData()` 和 `hexBinPointsData()` 创建热力分布:
+
+- **权重计算**: 根据点密度或自定义权重生成热力分布
+- **颜色映射**: 支持自定义颜色渐变方案
+- **平滑插值**: 自动插值生成平滑的热力效果
+- **等值线绘制**: 基于数据值生成等值线图
+- **动态更新**: 支持实时更新热力图数据
+
+### 路径绘制
+
+使用 `pathsData()` 绘制地理路径:
+
+- **多点路径**: 支持由多个经纬度坐标组成的路径
+- **路径样式**: 配置颜色、宽度、高度等属性
+- **虚线动画**: 类似弧线,支持虚线动画效果
+- **应用场景**: 海底光缆、交通路线、迁徙路径等
+- **自定义标签**: 通过 `pathLabel()` 显示路径信息
+
+### 自定义材质与昼夜轮回
+
+使用 `globeMaterial()` 实现高级视觉效果:
+
+- **自定义 Shader**: 使用 Three.js `ShaderMaterial` 创建自定义材质
+- **多纹理混合**: 混合白天、夜晚纹理实现昼夜效果
+- **太阳位置计算**: 基于时间计算太阳位置,动态更新明暗分界线
+- **云层叠加**: 使用 `cloudsImageUrl()` 添加云层纹理
+- **凹凸贴图**: 通过 `bumpImageUrl()` 添加地形凹凸效果
+
+### 标签与 HTML 元素
+
+使用 `labelsData()` 和 `htmlElementsData()` 添加标注:
+
+- **文本标签**: 在指定位置显示文本标签
+- **HTML 元素**: 嵌入自定义 HTML 内容
+- **动态定位**: 标签随地球旋转自动定位
+- **样式自定义**: 完全自定义标签样式
+- **事件交互**: 支持点击、悬停等交互事件
+
+## 关键代码
+
+### 安装依赖
+
+```bash
+# 使用 pnpm 安装
+pnpm add three-globe globe.gl react-globe.gl
+
+# 或使用 npm
+npm install three-globe globe.gl react-globe.gl
+```
+
+### 基础点数据渲染 (three-globe)
+
+在 React Three Fiber 中使用 `three-globe`:
+
+```tsx
+import { useFrame } from "@react-three/fiber";
+import { useEffect, useMemo } from "react";
+import Globe from "three-globe";
+
+// 创建随机点数据
+function createGlobeData() {
+  const N = 300;
+  return [...Array(N).keys()].map(() => ({
+    lat: (Math.random() - 0.5) * 180,
+    lng: (Math.random() - 0.5) * 360,
+    size: Math.random() / 3,
+    color: ["red", "white", "blue", "green"][Math.round(Math.random() * 3)],
+  }));
+}
+
+export default function GlobeComponent() {
+  const globe = useMemo(() => {
+    const g = new Globe()
+      .globeImageUrl("/three-globe/example/img/earth-night.png")
+      .pointsData(createGlobeData())
+      .pointAltitude("size")
+      .pointColor("color");
+    return g;
+  }, []);
+
+  // 每帧旋转地球
+  useFrame(() => {
+    globe.rotation.y += 0.002;
+  });
+
+  // 清理资源
+  useEffect(() => {
+    return () => {
+      globe?._destructor();
+    };
+  }, [globe]);
+
+  return <primitive object={globe} />;
+}
+```
+
+### 弧线连接动画
+
+创建带动画效果的弧线连接:
+
+```tsx
+import Globe from "three-globe";
+
+function createArcData() {
+  const N = 20;
+  return [...Array(N).keys()].map(() => ({
+    startLat: (Math.random() - 0.5) * 180,
+    startLng: (Math.random() - 0.5) * 360,
+    endLat: (Math.random() - 0.5) * 180,
+    endLng: (Math.random() - 0.5) * 360,
+    color: [
+      ["red", "white", "blue", "green"][Math.round(Math.random() * 3)],
+      ["red", "white", "blue", "green"][Math.round(Math.random() * 3)],
+    ],
+  }));
+}
+
+export default function ArcLinkComponent() {
+  const globe = useMemo(() => {
+    return new Globe()
+      .globeImageUrl("/three-globe/example/img/earth-night.png")
+      .arcsData(createArcData())
+      .arcColor("color")
+      .arcDashLength(() => Math.random())
+      .arcDashGap(() => Math.random())
+      .arcDashAnimateTime(() => Math.random() * 4000 + 500);
+  }, []);
+
+  useFrame(() => {
+    globe.rotation.y += 0.002;
+  });
+
+  return <primitive object={globe} />;
+}
+```
+
+### 六边形多边形 (react-globe.gl)
+
+使用 React 封装版本渲染六边形网格:
+
+```tsx
+import Globe, { GlobeMethods } from "react-globe.gl";
+import { useRef, useEffect } from "react";
+
+export default function HexPolygonComponent() {
+  const globeEl = useRef<GlobeMethods>(null);
+  const [countries, setCountries] = useState([]);
+
+  useEffect(() => {
+    // 加载 GeoJSON 数据
+    fetch("/countries.geojson")
+      .then((res) => res.json())
+      .then((data) => setCountries(data.features));
+  }, []);
+
+  return (
+    <Globe
+      ref={globeEl}
+      width={800}
+      height={600}
+      globeImageUrl="/three-globe/example/img/earth-dark.png"
+      hexPolygonsData={countries}
+      hexPolygonResolution={3}
+      hexPolygonMargin={0.3}
+      hexPolygonUseDots={true}
+      hexPolygonColor={() =>
+        `#${Math.round(Math.random() * 2 ** 24)
+          .toString(16)
+          .padStart(6, "0")}`
+      }
+      hexPolygonLabel={({ properties }) => `
+        <b>${properties.ADMIN} (${properties.ISO_A2})</b> <br />
+        Population: <i>${properties.POP_EST}</i>
+      `}
+    />
+  );
+}
+```
+
+### 昼夜轮回效果 (globe.gl)
+
+使用自定义 Shader 实现昼夜轮回:
+
+```tsx
+import Globe, { GlobeInstance } from "globe.gl";
+import { ShaderMaterial, TextureLoader, Vector2 } from "three";
+
+const dayNightShader = {
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec2 vUv;
+
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D dayTexture;
+    uniform sampler2D nightTexture;
+    uniform vec2 sunPosition;
+
+    varying vec3 vNormal;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 dayColor = texture2D(dayTexture, vUv);
+      vec4 nightColor = texture2D(nightTexture, vUv);
+
+      // 计算光照强度
+      float lng = vUv.x * 360.0 - 180.0;
+      float lat = 90.0 - vUv.y * 180.0;
+
+      float dLng = lng - sunPosition.x;
+      float dLat = lat - sunPosition.y;
+      float distance = sqrt(dLng * dLng + dLat * dLat);
+
+      float intensity = smoothstep(90.0, 80.0, distance);
+
+      gl_FragColor = mix(nightColor, dayColor, intensity);
+    }
+  `,
+};
+
+export default function DayNightCycleComponent() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const world = new Globe(containerRef.current)
+      .width(800)
+      .height(600);
+
+    // 加载纹理
+    Promise.all([
+      new TextureLoader().loadAsync("/img/earth-day.png"),
+      new TextureLoader().loadAsync("/img/earth-night.png"),
+    ]).then(([dayTexture, nightTexture]) => {
+      const material = new ShaderMaterial({
+        uniforms: {
+          dayTexture: { value: dayTexture },
+          nightTexture: { value: nightTexture },
+          sunPosition: { value: new Vector2() },
+        },
+        vertexShader: dayNightShader.vertexShader,
+        fragmentShader: dayNightShader.fragmentShader,
+      });
+
+      world
+        .globeMaterial(material)
+        .backgroundImageUrl("/img/night-sky.png");
+
+      // 动画循环更新太阳位置
+      function animate() {
+        const dt = Date.now();
+        setCurrentTime(new Date(dt));
+        const sunPos = calculateSunPosition(dt);
+        material.uniforms.sunPosition.value.set(sunPos[0], sunPos[1]);
+        requestAnimationFrame(animate);
+      }
+      animate();
+    });
+
+    return () => {
+      world._destructor();
+    };
+  }, []);
+
+  return <div ref={containerRef} />;
+}
+
+// 计算太阳位置
+function calculateSunPosition(timestamp: number) {
+  const day = new Date(timestamp).setUTCHours(0, 0, 0, 0);
+  const longitude = ((day - timestamp) / 864e5) * 360 - 180;
+  const latitude = 0; // 简化计算
+  return [longitude, latitude];
+}
+```
+
+### 路径数据绘制
+
+绘制海底光缆路径:
+
+```tsx
+import Globe, { GlobeInstance } from "globe.gl";
+
+export default function SubmarineCablesComponent() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const world = new Globe(containerRef.current)
+      .width(800)
+      .height(600)
+      .globeImageUrl("/three-globe/example/img/earth-night.png")
+      .bumpImageUrl("/three-globe/example/img/earth-topology.png")
+      .backgroundImageUrl("/three-globe/example/img/night-sky.png");
+
+    // 加载海底光缆数据
+    fetch("/datasets/cable-geo.json")
+      .then((r) => r.json())
+      .then((cablesGeo) => {
+        const cablePaths = [];
+        cablesGeo.features.forEach(({ geometry, properties }) => {
+          geometry.coordinates.forEach((coords) => {
+            cablePaths.push({ coords, properties });
+          });
+        });
+
+        world
+          .pathsData(cablePaths)
+          .pathPoints("coords")
+          .pathPointLat((p) => p[1])
+          .pathPointLng((p) => p[0])
+          .pathColor((path) => path.properties.color)
+          .pathLabel((path) => path.properties.name)
+          .pathDashLength(0.1)
+          .pathDashGap(0.008)
+          .pathDashAnimateTime(12000);
+      });
+
+    return () => {
+      world._destructor();
+    };
+  }, []);
+
+  return <div ref={containerRef} />;
+}
+```
+
+### 航线数据可视化
+
+展示国际航线网络:
+
+```tsx
+import Globe, { GlobeInstance } from "globe.gl";
+import { csvParseRows } from "d3";
+
+const COUNTRY = "United States";
+const OPACITY = 0.22;
+
+export default function AirlineRoutesComponent() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const world = new Globe(containerRef.current)
+      .width(800)
+      .height(600)
+      .globeImageUrl("/three-globe/example/img/earth-night.png")
+      .pointOfView({ lat: 39.6, lng: -98.5, altitude: 2 });
+
+    // 加载机场和航线数据
+    Promise.all([
+      fetch("https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat")
+        .then((res) => res.text())
+        .then((d) => csvParseRows(d, parseAirport)),
+      fetch("https://raw.githubusercontent.com/jpatokal/openflights/master/data/routes.dat")
+        .then((res) => res.text())
+        .then((d) => csvParseRows(d, parseRoute)),
+    ]).then(([airports, routes]) => {
+      const byIata = indexBy(airports, "iata");
+
+      const filteredRoutes = routes
+        .filter((d) => byIata[d.srcIata] && byIata[d.dstIata])
+        .filter((d) => d.stops === "0")
+        .map((d) => ({
+          ...d,
+          srcAirport: byIata[d.srcIata],
+          dstAirport: byIata[d.dstIata],
+        }))
+        .filter(
+          (d) =>
+            d.srcAirport.country === COUNTRY &&
+            d.dstAirport.country !== COUNTRY
+        );
+
+      world
+        .pointsData(airports)
+        .arcsData(filteredRoutes)
+        .arcLabel((d) => `${d.airline}: ${d.srcIata} → ${d.dstIata}`)
+        .arcStartLat((d) => +d.srcAirport.lat)
+        .arcStartLng((d) => +d.srcAirport.lng)
+        .arcEndLat((d) => +d.dstAirport.lat)
+        .arcEndLng((d) => +d.dstAirport.lng)
+        .arcDashLength(0.25)
+        .arcDashGap(1)
+        .arcDashInitialGap(() => Math.random())
+        .arcDashAnimateTime(4000)
+        .arcColor(() => [
+          `rgba(0, 255, 0, ${OPACITY})`,
+          `rgba(255, 0, 0, ${OPACITY})`,
+        ])
+        .pointColor(() => "orange")
+        .pointAltitude(0)
+        .pointRadius(0.02)
+        .pointsMerge(true);
+    });
+
+    return () => {
+      world._destructor();
+    };
+  }, []);
+
+  return <div ref={containerRef} />;
+}
+```
+
+### 响应式容器
+
+创建自适应容器组件:
+
+```tsx
+import { useRef, useState, useEffect } from "react";
+
+export function useContainerSize(containerRef: React.RefObject<HTMLDivElement>) {
+  const [size, setSize] = useState([0, 0]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setSize([width, height]);
+    });
+
+    observer.observe(containerRef.current);
+
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  return size;
+}
+
+// 使用示例
+export default function ResponsiveGlobe() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, height] = useContainerSize(containerRef);
+
+  useEffect(() => {
+    if (!containerRef.current || !width || !height) return;
+
+    const world = new Globe(containerRef.current)
+      .width(width)
+      .height(height);
+
+    return () => {
+      world._destructor();
+    };
+  }, [width, height]);
+
+  return <div ref={containerRef} style={{ width: "100%", height: "600px" }} />;
+}
+```
+
+## 应用场景
+
+### 地理数据可视化
+
+- **人口分布**: 使用热力图展示世界人口密度分布
+- **地震数据**: 用点标记显示近期地震位置和震级
+- **气象数据**: 展示气温、降雨量等气象数据的地理分布
+- **资源分布**: 可视化矿产、能源等自然资源的分布情况
+- **统计数据**: 展示 GDP、教育水平等国家级统计数据
+
+### 网络拓扑展示
+
+- **航线网络**: 可视化国际和国内航线网络
+- **互联网节点**: 展示全球互联网节点和连接关系
+- **数据中心**: 显示全球数据中心分布和网络连接
+- **海底光缆**: 绘制全球海底光缆网络
+- **物流网络**: 展示物流节点和运输路线
+
+### 历史事件追溯
+
+- **登月地点**: 标记历史上的登月着陆点
+- **探险路线**: 展示历史探险家的航行路线
+- **战争事件**: 可视化历史战争事件的地理分布
+- **文明演进**: 展示人类文明的地理扩散过程
+- **迁徙路径**: 可视化动物或人类的迁徙路径
+
+### 实时监控系统
+
+- **服务器状态**: 监控全球服务器的运行状态
+- **物流追踪**: 实时追踪货物的物流位置
+- **卫星轨道**: 展示卫星的实时轨道和位置
+- **飞行追踪**: 实时显示飞机的飞行位置和航线
+- **舰船追踪**: 监控船舶的实时位置和航线
+
+### 科学研究
+
+- **天文现象**: 模拟昼夜轮回、日食月食等天文现象
+- **气候变化**: 可视化全球气候变化趋势
+- **地质研究**: 展示板块构造、地质活动等数据
+- **海洋研究**: 可视化洋流、海温等海洋数据
+- **生态研究**: 展示物种分布、生态系统变化等
+
+## 性能优化技巧
+
+### 数据优化
+
+1. **点数据合并**
+
+```tsx
+// ✅ 推荐:合并点几何体以提升性能
+globe.pointsMerge(true);
+
+// ❌ 避免:过多独立点对象
+globe.pointsMerge(false); // 默认值,每个点是独立对象
+```
+
+2. **数据精简**
+
+```tsx
+// ✅ 推荐:只保留必要的数据字段
+const optimizedData = rawData.map(({ lat, lng, value }) => ({
+  lat,
+  lng,
+  value,
+}));
+
+// ❌ 避免:携带大量冗余数据
+const unoptimizedData = rawData; // 包含大量无用字段
+```
+
+3. **按需加载**
+
+```tsx
+// ✅ 推荐:根据视图范围动态加载数据
+const visibleData = allData.filter((d) => isInViewport(d.lat, d.lng));
+globe.pointsData(visibleData);
+
+// 视图变化时更新数据
+globe.onZoom(() => {
+  const newVisibleData = allData.filter((d) => isInViewport(d.lat, d.lng));
+  globe.pointsData(newVisibleData);
+});
+```
+
+### 渲染优化
+
+1. **LOD (Level of Detail)**
+
+```tsx
+// 根据相机距离调整细节级别
+globe.onZoom(({ altitude }) => {
+  if (altitude > 2) {
+    // 远距离:降低分辨率
+    globe.hexPolygonResolution(2);
+    globe.pointRadius(0.1);
+  } else {
+    // 近距离:提高分辨率
+    globe.hexPolygonResolution(4);
+    globe.pointRadius(0.3);
+  }
+});
+```
+
+2. **控制动画数量**
+
+```tsx
+// ✅ 推荐:限制同时动画的元素数量
+const MAX_ANIMATED_ARCS = 50;
+const visibleArcs = allArcs.slice(0, MAX_ANIMATED_ARCS);
+globe.arcsData(visibleArcs);
+
+// ❌ 避免:过多动画元素
+globe.arcsData(allArcs); // 如果 allArcs 有数千条
+```
+
+3. **纹理优化**
+
+```tsx
+// ✅ 推荐:使用压缩纹理和适当的分辨率
+globe
+  .globeImageUrl("/img/earth-2k.jpg") // 2K 纹理
+  .bumpImageUrl("/img/earth-topology-1k.jpg"); // 1K 凹凸贴图
+
+// ❌ 避免:过高分辨率纹理
+globe
+  .globeImageUrl("/img/earth-8k.jpg") // 8K 纹理,性能开销大
+  .bumpImageUrl("/img/earth-topology-4k.jpg");
+```
+
+### 内存管理
+
+1. **及时清理资源**
+
+```tsx
+// React 组件卸载时清理
+useEffect(() => {
+  const globe = new Globe(containerRef.current);
+
+  return () => {
+    // 清理 Globe 实例
+    globe._destructor();
+  };
+}, []);
+```
+
+2. **避免内存泄漏**
+
+```tsx
+// ✅ 推荐:移除事件监听器
+const handleClick = (point) => {
+  console.log(point);
+};
+
+globe.onPointClick(handleClick);
+
+// 清理时
+globe.onPointClick(null);
+
+// ✅ 推荐:清空数据引用
+globe.pointsData([]);
+globe.arcsData([]);
+globe.pathsData([]);
+```
+
+3. **数据缓存**
+
+```tsx
+// ✅ 推荐:缓存静态数据
+const cachedCountries = useMemo(() => {
+  return loadCountryData();
+}, []);
+
+globe.hexPolygonsData(cachedCountries);
+```
+
+### 交互优化
+
+1. **节流防抖**
+
+```tsx
+import { throttle } from "lodash";
+
+// ✅ 推荐:节流处理频繁触发的事件
+const handleZoom = throttle(({ altitude, lat, lng }) => {
+  updateVisibleData(altitude, lat, lng);
+}, 100);
+
+globe.onZoom(handleZoom);
+```
+
+2. **延迟加载**
+
+```tsx
+// ✅ 推荐:延迟加载非关键数据
+useEffect(() => {
+  // 先加载基础地球
+  const globe = new Globe(containerRef.current)
+    .globeImageUrl("/img/earth.jpg");
+
+  // 延迟加载数据
+  setTimeout(() => {
+    loadPointsData().then((data) => {
+      globe.pointsData(data);
+    });
+  }, 1000);
+}, []);
+```
+
+## 常见问题
+
+### Globe 不显示
+
+**原因**:容器尺寸未设置、纹理路径错误、或初始化时机不对。
+
+**解决方案**:
+
+```tsx
+// 1. 确保容器有明确的尺寸
+<div ref={containerRef} style={{ width: "800px", height: "600px" }} />
+
+// 2. 检查纹理路径是否正确
+globe.globeImageUrl("/three-globe/example/img/earth-night.png");
+
+// 3. 确保在容器挂载后初始化
+useEffect(() => {
+  if (!containerRef.current) return;
+  const globe = new Globe(containerRef.current);
+  // ...
+}, []); // 依赖数组为空,确保只初始化一次
+
+// 4. 检查 Three.js 版本兼容性
+// three-globe 需要 Three.js r128+
+```
+
+### 数据不更新
+
+**原因**:数据引用未改变、或未调用过渡动画。
+
+**解决方案**:
+
+```tsx
+// ✅ 推荐:创建新数组触发更新
+const newData = [...oldData, newPoint];
+globe.pointsData(newData);
+
+// ❌ 避免:直接修改数组
+oldData.push(newPoint);
+globe.pointsData(oldData); // 可能不会触发更新
+
+// ✅ 推荐:设置过渡时间
+globe
+  .pointsData(newData)
+  .pointsTransitionDuration(1000); // 1秒过渡动画
+
+// 强制重新渲染
+globe.pointsData([]); // 先清空
+setTimeout(() => {
+  globe.pointsData(newData); // 再设置新数据
+}, 0);
+```
+
+### 性能卡顿
+
+**原因**:数据量过大、动画过多、或纹理分辨率过高。
+
+**解决方案**:
+
+```tsx
+// 1. 限制数据量
+const MAX_POINTS = 1000;
+const limitedData = allData.slice(0, MAX_POINTS);
+globe.pointsData(limitedData);
+
+// 2. 合并几何体
+globe.pointsMerge(true);
+globe.arcsMerge(true);
+
+// 3. 降低纹理分辨率
+globe.globeImageUrl("/img/earth-2k.jpg"); // 使用 2K 而不是 8K
+
+// 4. 减少动画
+globe.arcsTransitionDuration(0); // 禁用过渡动画
+
+// 5. 使用 Web Worker 处理数据
+const worker = new Worker("data-processor.js");
+worker.postMessage(rawData);
+worker.onmessage = (e) => {
+  globe.pointsData(e.data);
+};
+
+// 6. 监控性能
+const stats = new Stats();
+document.body.appendChild(stats.dom);
+function animate() {
+  stats.begin();
+  // globe render
+  stats.end();
+  requestAnimationFrame(animate);
+}
+```
+
+### React 中重复渲染
+
+**原因**:依赖项设置不当导致重复初始化。
+
+**解决方案**:
+
+```tsx
+// ✅ 推荐:使用 ref 存储 Globe 实例
+const globeRef = useRef<GlobeInstance | null>(null);
+
+useEffect(() => {
+  if (!containerRef.current) return;
+
+  // 避免重复创建
+  if (!globeRef.current) {
+    globeRef.current = new Globe(containerRef.current)
+      .width(800)
+      .height(600);
+  }
+
+  return () => {
+    if (globeRef.current) {
+      globeRef.current._destructor();
+      globeRef.current = null;
+    }
+  };
+}, []); // 空依赖数组,只运行一次
+
+// 数据更新时只更新数据,不重新创建 Globe
+useEffect(() => {
+  if (globeRef.current) {
+    globeRef.current.pointsData(data);
+  }
+}, [data]);
+```
+
+### 交互事件不响应
+
+**原因**:事件未正确绑定、或被其他元素遮挡。
+
+**解决方案**:
+
+```tsx
+// 1. 确保正确绑定事件
+globe
+  .onPointClick((point, event) => {
+    console.log("Clicked point:", point);
+  })
+  .onPointHover((point, prevPoint) => {
+    console.log("Hovering:", point);
+  });
+
+// 2. 检查 CSS pointer-events
+<div style={{ pointerEvents: "all" }}>
+  <div ref={containerRef} />
+</div>
+
+// 3. 确保 Globe 在最上层
+globe.scene().traverseVisible((object) => {
+  if (object.isMesh) {
+    object.raycast = THREE.Mesh.prototype.raycast;
+  }
+});
+
+// 4. 使用 enablePointerInteraction
+globe.enablePointerInteraction(true); // react-globe.gl
+```
+
+### 自定义 Shader 不工作
+
+**原因**:Shader 语法错误、uniform 未正确传递、或 Three.js 版本不兼容。
+
+**解决方案**:
+
+```tsx
+// 1. 检查 Shader 语法
+const material = new ShaderMaterial({
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D texture;
+    varying vec2 vUv;
+    void main() {
+      gl_FragColor = texture2D(texture, vUv);
+    }
+  `,
+  uniforms: {
+    texture: { value: textureLoader.load("/img/earth.jpg") },
+  },
+});
+
+// 2. 确保 uniform 正确更新
+material.uniforms.texture.value = newTexture;
+material.uniformsNeedUpdate = true;
+
+// 3. 检查 Three.js 版本
+console.log(THREE.REVISION); // 应该是 r128+
+
+// 4. 调试 Shader 编译错误
+const gl = globe.renderer().getContext();
+console.log(gl.getShaderInfoLog(shaderObject));
+```
+
+### 内存泄漏
+
+**原因**:Globe 实例未销毁、纹理未释放、或事件监听器未移除。
+
+**解决方案**:
+
+```tsx
+// 完整的清理流程
+useEffect(() => {
+  const globe = new Globe(containerRef.current);
+
+  return () => {
+    // 1. 移除事件监听器
+    globe.onPointClick(null);
+    globe.onPointHover(null);
+    globe.onZoom(null);
+
+    // 2. 清空数据
+    globe.pointsData([]);
+    globe.arcsData([]);
+    globe.pathsData([]);
+    globe.hexPolygonsData([]);
+
+    // 3. 销毁 Globe 实例
+    if (globe && globe._destructor) {
+      globe._destructor();
+    }
+
+    // 4. 清空容器
+    if (containerRef.current) {
+      containerRef.current.innerHTML = "";
+    }
+  };
+}, []);
+
+// 监控内存使用
+if (performance.memory) {
+  console.log("Memory:", performance.memory.usedJSHeapSize / 1048576, "MB");
+}
+```
+
+### TypeScript 类型错误
+
+**原因**:缺少类型定义或类型定义不完整。
+
+**解决方案**:
+
+```tsx
+// 1. 安装类型定义
+pnpm add @types/three
+
+// 2. 为 Globe 数据定义类型
+interface PointData {
+  lat: number;
+  lng: number;
+  size: number;
+  color: string;
+}
+
+interface ArcData {
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
+  color: string | string[];
+}
+
+// 3. 使用类型断言
+globe.pointsData(data as PointData[]);
+
+// 4. 扩展类型定义
+declare module "three-globe" {
+  export default class Globe extends Object3D {
+    pointsData(data: any[]): this;
+    arcsData(data: any[]): this;
+    // ... 其他方法
+  }
+}
+```
+
+## 注意事项
+
+1. **版本兼容性**:`three-globe` 需要 Three.js r128 或更高版本,确保版本匹配
+2. **纹理路径**:确保纹理图片路径正确,建议使用绝对路径或从 public 目录引用
+3. **资源清理**:组件卸载时务必调用 `_destructor()` 方法清理资源,避免内存泄漏
+4. **数据格式**:点数据需要 `lat` 和 `lng` 字段,弧线需要起止点坐标
+5. **性能考虑**:避免同时渲染过多元素,建议点数据不超过 5000 个,弧线不超过 1000 条
+6. **动画性能**:虚线动画会消耗较多性能,大量动画时考虑降低动画速度或禁用部分动画
+7. **响应式布局**:使用 `width()` 和 `height()` 方法设置尺寸,配合 ResizeObserver 实现响应式
+8. **坐标系统**:经度范围 -180 到 180,纬度范围 -90 到 90
+9. **GeoJSON 格式**:六边形多边形需要标准 GeoJSON Feature Collection 格式
+10. **浏览器兼容性**:需要支持 WebGL 的现代浏览器,IE11 需要 polyfill
+11. **自定义材质**:使用自定义 Shader 时注意 GLSL 版本兼容性
+12. **事件处理**:点击和悬停事件可能会影响性能,大量数据时考虑节流处理
+13. **Three.js 实例**:可通过 `globe.scene()`、`globe.camera()`、`globe.renderer()` 访问底层 Three.js 对象
+14. **React 集成**:在 React Three Fiber 中使用 `three-globe` 需要用 `<primitive object={globe} />`
+15. **数据更新**:更新数据时创建新数组,避免直接修改原数组导致不更新
+
+## 参考资料
+
+- [Globe.gl 官方文档](https://github.com/vasturiano/globe.gl)
+- [three-globe 仓库](https://github.com/vasturiano/three-globe)
+- [react-globe.gl 仓库](https://github.com/vasturiano/react-globe.gl)
+- [Three.js 官方文档](https://threejs.org/docs/)
+- [React Three Fiber 文档](https://docs.pmnd.rs/react-three-fiber/)
+- [WebGL 基础教程](https://webglfundamentals.org/)
+- [GeoJSON 规范](https://geojson.org/)
+- [D3.js 地理投影](https://github.com/d3/d3-geo)

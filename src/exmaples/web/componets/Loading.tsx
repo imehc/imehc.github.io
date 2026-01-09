@@ -9,7 +9,7 @@ export default function Loading({ loadText = "Loading..." }: LoadingProps) {
 				{/* Spinning loader */}
 				<div className="tw:relative tw:w-20 tw:h-20 tw:mb-6">
 					<div className="tw:absolute tw:inset-0 tw:border-4 tw:border-primary tw:border-t-transparent tw:rounded-full tw:animate-spin"></div>
-					<div className="tw:absolute tw:inset-2 tw:border-4 tw:border-secondary tw:border-b-transparent tw:rounded-full tw:animate-spin-reverse"></div>
+					<div className="tw:absolute tw:inset-2 tw:border-4 tw:border-secondary tw:border-b-transparent tw:rounded-full animate-spin-reverse"></div>
 				</div>
 
 				{/* Loading text */}
