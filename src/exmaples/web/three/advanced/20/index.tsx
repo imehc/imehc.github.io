@@ -1,7 +1,6 @@
 import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import { GUI } from "dat.gui";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Container from "../../../componets/Container";
 import LoadingNormal from "../../../componets/Loading";
 import {
@@ -10,30 +9,40 @@ import {
 	transformGuiParam,
 } from "./constant";
 import Loading from "./loading";
+import { GUI } from "dat.gui";
 
 export default function Viewer() {
 	const [currentExample, setCurrentExample] = useState<GlobeCompKey>("03");
+	const guiRef = useRef<GUI>(null);
 
 	useEffect(() => {
-		const gui = new GUI();
-		gui.domElement.style.position = "fixed";
-		gui.domElement.style.top = "50%";
-		gui.domElement.style.transform = "translateY(-50%)";
-		gui.domElement.style.left = "0";
+		// 动态导入 dat.gui 以支持 SSR
+		import("dat.gui").then(({ GUI }) => {
+			const gui = new GUI();
+			guiRef.current = gui;
 
-		// GUI控制参数对象
-		const params = {
-			example: currentExample,
-		};
+			gui.domElement.style.position = "fixed";
+			gui.domElement.style.top = "50%";
+			gui.domElement.style.transform = "translateY(-50%)";
+			gui.domElement.style.left = "0";
 
-		// 添加下拉选择器
-		gui
-			.add(params, "example", transformGuiParam())
-			.name("切换示例")
-			.onChange(setCurrentExample);
+			// GUI控制参数对象
+			const params = {
+				example: currentExample,
+			};
+
+			// 添加下拉选择器
+			gui
+				.add(params, "example", transformGuiParam())
+				.name("切换示例")
+				.onChange(setCurrentExample);
+		});
 
 		return () => {
-			gui.destroy();
+			if (guiRef.current) {
+				guiRef.current.destroy();
+				guiRef.current = null;
+			}
 		};
 	}, [currentExample]);
 
