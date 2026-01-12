@@ -1,6 +1,6 @@
-import { themes as prismThemes } from "prism-react-renderer";
-import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import type { Config } from "@docusaurus/types";
+import { themes as prismThemes } from "prism-react-renderer";
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -16,15 +16,15 @@ const config: Config = {
 	},
 
 	// Set the production url of your site here
-	url: "https://github.com/",
+	url: "https://imehc.github.io",
 	// Set the /<baseUrl>/ pathname under which your site is served
 	// For GitHub pages deployment, it is often '/<projectName>/'
-	baseUrl: "/",
+	baseUrl: "/chiyu/",
 
 	// GitHub pages deployment config.
 	// If you aren't using GitHub pages, you don't need these.
 	organizationName: "imehc", // Usually your GitHub org/user name.
-	projectName: "three-dimensional", // Usually your repo name.
+	projectName: "chiyu", // Usually your repo name.
 
 	onBrokenLinks: "throw",
 
