@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkanch=self.webpackChunkanch||[]).push([["3220"],{1912(h){h.exports=JSON.parse('{"blogBasePath":"/chiyu/blog","blogTitle":"Blog","authorsListPath":"/chiyu/blog/authors"}')}}]);
