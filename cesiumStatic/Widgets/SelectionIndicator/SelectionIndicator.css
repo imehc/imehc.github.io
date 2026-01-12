@@ -1,0 +1,1 @@
+.cesium-selection-wrapper{pointer-events:none;visibility:hidden;opacity:0;width:160px;height:160px;transition:visibility 0s .2s,opacity .2s ease-in;position:absolute}.cesium-selection-wrapper-visible{visibility:visible;opacity:1;transition:opacity .2s ease-out}.cesium-selection-wrapper svg{fill:#2e2;stroke:#000;stroke-width:1.1px}

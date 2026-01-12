@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkanch=self.webpackChunkanch||[]).push([["3186"],{68070(a){a.exports=JSON.parse('{"tags":[{"label":"Python","permalink":"/blog/tags/python","count":1},{"label":"JavaScript","permalink":"/blog/tags/java-script","count":1},{"label":"Vue","permalink":"/blog/tags/vue","count":1},{"label":"Nestjs","permalink":"/blog/tags/nestjs","count":1}]}')}}]);
