@@ -1,0 +1,51 @@
+on:
+  push: # 当用户push代码到代码仓库main分支时触发github action
+    branches:
+      - main
+  schedule: # 定时触发github action
+    - cron: "0 0 */1 * *" # 每天触发一次
+  workflow_dispatch: # GitHub Actions 中的一种触发器，用于手动触发工作流（Workflow）。它允许用户通过 GitHub 界面或 API 手动启动一个工作流，而不是依赖于事件
+permissions:
+  contents: write # 一种最简单的授予github action 写权限的方式
+
+name: Build and Deploy
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest # 指定运行任务的环境，这里是 ubuntu-latest。
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4 #检出代码仓库。
+        
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+          
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+            
+      - name: Install dependencies
+        run: pnpm install
+        
+      - name: Build project
+        run: pnpm build
+        
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4 
+        with:
+          folder: "build"
