@@ -246,7 +246,7 @@ export function initViewer(el: HTMLElement) {
 		});
 
 	renderDefault({ name: "雨", type: "rain" });
-	return viewer;
+	return { viewer, gui };
 }
 
 type OnGroundType = "lantian" | "qingtian" | "wanxia";

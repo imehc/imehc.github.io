@@ -1,5 +1,6 @@
 import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
+import type { GUI } from "dat.gui";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Container from "../../../componets/Container";
 import LoadingNormal from "../../../componets/Loading";
@@ -9,7 +10,6 @@ import {
 	transformGuiParam,
 } from "./constant";
 import Loading from "./loading";
-import { GUI } from "dat.gui";
 
 export default function Viewer() {
 	const [currentExample, setCurrentExample] = useState<GlobeCompKey>("03");
