@@ -10,27 +10,27 @@ permissions:
 
 name: Build and Deploy
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest # 指定运行任务的环境，这里是 ubuntu-latest。
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout 🛎️
-        uses: actions/checkout@v4 #检出代码仓库。
-        
+        uses: actions/checkout@v4
+
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
-          
+
       - name: Get pnpm store directory
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-          
+
       - name: Setup pnpm cache
         uses: actions/cache@v4
         with:
@@ -38,14 +38,39 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
-            
+
       - name: Install dependencies
         run: pnpm install
-        
+
       - name: Build project
         run: pnpm build
-        
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: build
+          retention-days: 1
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    # 只有当提交者不是机器人时才执行部署
+    if: |
+      success() &&
+      !contains(github.actor, '[bot]') &&
+      !contains(github.event.head_commit.author.name, '[bot]')
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-files
+          path: build
+
       - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4 
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: "build"
