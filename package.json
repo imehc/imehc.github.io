@@ -64,7 +64,7 @@
 		"three": "^0.182.0",
 		"three-globe": "^2.45.0",
 		"urijs": "^1.19.11",
-		"zustand": "^5.0.9"
+		"zustand": "^5.0.10"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.9",
