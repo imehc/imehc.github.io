@@ -31,7 +31,7 @@
 		"@giscus/react": "^3.1.0",
 		"@mdx-js/react": "^3.0.0",
 		"@react-three/drei": "^10.7.7",
-		"@react-three/fiber": "^9.4.2",
+		"@react-three/fiber": "^9.5.0",
 		"@react-three/postprocessing": "^3.0.4",
 		"@react-three/rapier": "^2.2.0",
 		"@stackblitz/sdk": "^1.11.0",
@@ -39,9 +39,9 @@
 		"@theatre/core": "^0.7.2",
 		"@theatre/r3f": "^0.7.2",
 		"@theatre/studio": "^0.7.2",
-		"@turf/turf": "^7.3.1",
+		"@turf/turf": "^7.3.2",
 		"@tweenjs/tween.js": "^25.0.0",
-		"cesium": "^1.136.0",
+		"cesium": "^1.137.0",
 		"cesium-navigation-es6": "^3.0.9",
 		"clsx": "^2.0.0",
 		"d3": "^7.9.0",
@@ -58,7 +58,7 @@
 		"proj4": "^2.20.2",
 		"react": "^19.2.3",
 		"react-dom": "^19.2.3",
-		"react-error-boundary": "^6.0.0",
+		"react-error-boundary": "^6.0.3",
 		"react-globe.gl": "^2.37.0",
 		"shpjs": "^6.2.0",
 		"sonner": "^2.0.7",
@@ -66,10 +66,10 @@
 		"three": "^0.182.0",
 		"three-globe": "^2.45.0",
 		"urijs": "^1.19.11",
-		"zustand": "^5.0.9"
+		"zustand": "^5.0.10"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.3.9",
+		"@biomejs/biome": "^2.3.11",
 		"@commitlint/cli": "^20.3.1",
 		"@commitlint/config-conventional": "^20.3.1",
 		"@docusaurus/module-type-aliases": "3.9.2",
@@ -80,7 +80,7 @@
 		"@types/d3": "^7.4.3",
 		"@types/dat.gui": "^0.7.13",
 		"@types/geojson": "^7946.0.16",
-		"@types/react": "^19.2.7",
+		"@types/react": "^19.2.8",
 		"@types/react-dom": "^19.2.3",
 		"@types/shpjs": "^3.4.7",
 		"@types/supercluster": "^7.1.3",
@@ -94,7 +94,7 @@
 		"husky": "^9.1.7",
 		"postcss": "^8.5.6",
 		"tailwindcss": "^4.1.18",
-		"typescript": "~5.6.2"
+		"typescript": "~5.9.3"
 	},
 	"browserslist": {
 		"production": [
