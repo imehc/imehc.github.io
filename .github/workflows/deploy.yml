@@ -1,22 +1,26 @@
 on:
-  push: # 当用户push代码到代码仓库main分支时触发github action
+  push:
     branches:
       - main
-  schedule: # 定时触发github action
-    - cron: "0 0 */1 * *" # 每天触发一次
-  workflow_dispatch: # GitHub Actions 中的一种触发器，用于手动触发工作流（Workflow）。它允许用户通过 GitHub 界面或 API 手动启动一个工作流，而不是依赖于事件
+  workflow_dispatch:
+
 permissions:
-  contents: write # 一种最简单的授予github action 写权限的方式
+  contents: write
+  issues: write
+  pull-requests: write
 
 name: Build and Deploy
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout 🛎️
+      - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # semantic-release 需要完整的 git 历史
 
-      - name: Setup Node.js environment
+      - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -52,17 +56,55 @@ jobs:
           path: build
           retention-days: 1
 
-  deploy:
+  release:
     runs-on: ubuntu-latest
     needs: build
-    # 只有当提交者不是机器人时才执行部署
+    # 只有非 bot 提交才执行版本发布
     if: |
       success() &&
       !contains(github.actor, '[bot]') &&
       !contains(github.event.head_commit.author.name, '[bot]')
+    outputs:
+      new-release-published: ${{ steps.semantic.outputs.new-release-published }}
+      new-release-version: ${{ steps.semantic.outputs.new-release-version }}
     steps:
-      - name: Checkout 🛎️
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, release]
+    # 只有当版本号更新成功时才执行部署
+    if: needs.release.outputs.new-release-published == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
