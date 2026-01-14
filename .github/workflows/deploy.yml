@@ -104,13 +104,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [build, release]
-    # 当 release 成功发布新版本，或者 release 被跳过（bot 提交）且 build 成功时执行部署
+    # 在 semantic-release bot commit 触发的第二次运行中执行部署（此时代码已包含更新后的版本号）
     if: |
-      (needs.release.result == 'success' && needs.release.outputs.new-release-published == 'true') ||
-      (needs.release.result == 'skipped' && needs.build.result == 'success')
+      needs.build.result == 'success' &&
+      needs.release.result == 'skipped'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
