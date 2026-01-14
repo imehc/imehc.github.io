@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/imehc/imehc.github.io/compare/v1.0.0...v1.0.1) (2026-01-14)
+
+
+### Bug Fixes
+
+* 修复 semantic-release bot 提交时 deploy 不执行的问题 ([098bf7c](https://github.com/imehc/imehc.github.io/commit/098bf7cae153d620b7879e13773ac1906d1dcfeb))
+* 调整部署时机为 semantic-release 完成后 ([c47dbc8](https://github.com/imehc/imehc.github.io/commit/c47dbc80f041e8adb326e2dbd92650fe826bd5a0))
+
 # 1.0.0 (2026-01-14)
 
 
