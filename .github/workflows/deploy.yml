@@ -67,15 +67,19 @@ jobs:
     outputs:
       new-release-published: ${{ steps.semantic.outputs.new-release-published }}
       new-release-version: ${{ steps.semantic.outputs.new-release-version }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          persist-credentials: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -100,8 +104,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [build, release]
-    # 只有当版本号更新成功时才执行部署
-    if: needs.release.outputs.new-release-published == 'true'
+    # 当 release 成功发布新版本，或者 release 被跳过（bot 提交）且 build 成功时执行部署
+    if: |
+      (needs.release.result == 'success' && needs.release.outputs.new-release-published == 'true') ||
+      (needs.release.result == 'skipped' && needs.build.result == 'success')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
