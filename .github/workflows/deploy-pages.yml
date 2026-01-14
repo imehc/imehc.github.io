@@ -1,6 +1,7 @@
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -11,13 +12,31 @@ permissions:
 name: Deploy to GitHub Pages
 
 jobs:
-  deploy:
+  check-version:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version-check.outputs.changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: main  # 确保检出最新的 main 分支代码（包含 semantic-release 更新后的版本号）
+          fetch-depth: 2  # 需要至少两个提交来比较版本
+
+      - name: Check version changes
+        id: version-check
+        uses: EndBug/version-check@v2
+        with:
+          diff-search: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: check-version
+    # 只有当版本号发生变化时才执行部署
+    if: needs.check-version.outputs.changed == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
