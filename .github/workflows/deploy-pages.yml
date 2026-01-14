@@ -1,0 +1,58 @@
+on:
+  workflow_run: # 在 deploy 工作流完成后触发
+    workflows: ["Build and Release"]
+    types:
+      - completed
+    branches:
+      - main
+  schedule: # 定时触发github action
+    - cron: "0 0 */1 * *" # 每天触发一次
+  workflow_dispatch: # GitHub Actions 中的一种触发器，用于手动触发工作流（Workflow）。它允许用户通过 GitHub 界面或 API 手动启动一个工作流，而不是依赖于事件
+permissions:
+  contents: write # 一种最简单的授予github action 写权限的方式
+
+name: Build and Deploy
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest # 指定运行任务的环境，这里是 ubuntu-latest。
+    # 只在 deploy 工作流成功时执行，或者是定时任务/手动触发时执行
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v6 #检出代码仓库。
+        with:
+          ref: main # 确保检出最新的 main 分支代码
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: "build"
