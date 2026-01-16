@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/imehc/imehc.github.io/compare/v1.0.0...v1.0.1) (2026-01-16)
+
+
+### Bug Fixes
+
+* update Giscus repo to imehc.github.io ([7502635](https://github.com/imehc/imehc.github.io/commit/7502635b030cbdf5ee600f0998df94fea15bdcc3))
+
 # 1.0.0 (2026-01-16)
 
 
