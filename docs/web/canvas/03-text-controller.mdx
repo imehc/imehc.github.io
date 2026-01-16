@@ -1,0 +1,781 @@
+---
+sidebar_position: 3
+title: 文本控制器
+---
+
+import App from '@site/src/exmaples/web/canvas/03';
+
+# Text Controller
+
+`TextController` 是一个框架无关的 Canvas 文本渲染和交互控制器，用于在 Canvas 上绘制可拖拽的文本项。
+
+<App />
+
+## 特性
+
+- ✅ **框架无关**：纯 TypeScript 实现，可在任何 JavaScript 环境中使用
+- ✅ **交互式**：支持文本项的拖拽、选择、边界检测
+- ✅ **高性能**：拖拽时使用临时状态，减少不必要的回调
+- ✅ **类型安全**：完整的 TypeScript 类型定义
+- ✅ **易于集成**：简洁的 API 设计，易于与任何 UI 框架集成
+
+## 使用
+
+```typescript
+import { TextController, type TextItem, type Color } from './text-controller';
+```
+
+## 核心概念
+
+### TextItem
+
+文本项是控制器处理的基本单位：
+
+```typescript
+type TextItem = {
+  id: string | number;  // 唯一标识
+  text: string;         // 文本内容
+  position: Point;      // 位置坐标
+};
+```
+
+### 受控模式
+
+控制器采用受控模式设计：
+- 外部通过 `setItems()` 设置文本项
+- 拖拽结束时通过 `onItemsChange` 回调通知外部
+- 拖拽过程中使用内部临时状态，不触发回调（性能优化）
+
+## API 文档
+
+### 构造函数
+
+```typescript
+const controller = new TextController({
+  color?: Color;                      // 文本颜色，默认 [0, 0, 0, 1]
+  items?: TextItem[];                 // 初始文本项列表
+  onItemsChange?: (items: TextItem[]) => void;  // 值变化回调
+});
+```
+
+### 核心方法
+
+#### setCanvas()
+
+设置 Canvas 上下文和尺寸：
+
+```typescript
+controller.setCanvas(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): void
+```
+
+#### setItems()
+
+更新文本项列表：
+
+```typescript
+controller.setItems(items: TextItem[]): void
+```
+
+#### render()
+
+渲染所有文本项：
+
+```typescript
+controller.render(): void
+```
+
+### 交互方法
+
+#### handleMouseDown()
+
+处理鼠标按下事件：
+
+```typescript
+controller.handleMouseDown(x: number, y: number): void
+```
+
+#### handleMouseMove()
+
+处理鼠标移动事件：
+
+```typescript
+controller.handleMouseMove(x: number, y: number): void
+```
+
+#### handleMouseUp()
+
+处理鼠标松开事件（拖拽结束时触发 `onItemsChange`）：
+
+```typescript
+controller.handleMouseUp(): void
+```
+
+### 工具方法
+
+#### setColor()
+
+更新文本颜色：
+
+```typescript
+controller.setColor(color: Color): void
+```
+
+#### getItems()
+
+获取当前文本项列表：
+
+```typescript
+controller.getItems(): TextItem[]
+```
+
+#### getCursorStyle()
+
+获取当前光标样式：
+
+```typescript
+controller.getCursorStyle(): string  // 'default' | 'grab' | 'grabbing'
+```
+
+#### destroy()
+
+销毁控制器，清理资源：
+
+```typescript
+controller.destroy(): void
+```
+
+## 使用示例
+
+### 基础用法
+
+```typescript
+// 1. 创建控制器
+const controller = new TextController({
+  color: [255, 255, 255, 1],
+  items: [
+    { id: 1, text: 'Hello World', position: { x: 10, y: 10 } },
+    { id: 2, text: 'Draggable Text', position: { x: 10, y: 50 } }
+  ],
+  onItemsChange: (items) => {
+    console.log('Items changed:', items);
+    // 更新你的状态管理
+  }
+});
+
+// 2. 获取 Canvas 上下文
+const canvas = document.getElementById('myCanvas') as HTMLCanvasElement;
+const ctx = canvas.getContext('2d');
+
+// 3. 设置 Canvas
+controller.setCanvas(ctx, canvas.width, canvas.height);
+
+// 4. 渲染
+controller.render();
+
+// 5. 绑定事件
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  controller.handleMouseDown(e.clientX - rect.left, e.clientY - rect.top);
+  controller.render();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  controller.handleMouseMove(e.clientX - rect.left, e.clientY - rect.top);
+});
+
+canvas.addEventListener('mouseup', () => {
+  controller.handleMouseUp();
+  controller.render();
+});
+
+// 6. 更新光标样式
+canvas.style.cursor = controller.getCursorStyle();
+```
+
+### 响应式更新
+
+```typescript
+// 当外部数据变化时，更新控制器
+function updateItems(newItems: TextItem[]) {
+  controller.setItems(newItems);
+  controller.render();
+}
+
+// 当颜色变化时
+function updateColor(newColor: Color) {
+  controller.setColor(newColor);
+  controller.render();
+}
+```
+
+## 框架集成示例
+
+### Svelte 集成
+
+```svelte
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { TextController, type TextItem } from './text-controller';
+
+  let canvasRef: HTMLCanvasElement;
+  let items = $state<TextItem[]>([
+    { id: 1, text: 'Hello', position: { x: 10, y: 10 } }
+  ]);
+
+  const controller = new TextController({
+    items,
+    onItemsChange: (newItems) => {
+      items = newItems;
+    }
+  });
+
+  onMount(() => {
+    const ctx = canvasRef.getContext('2d');
+    if (ctx) {
+      controller.setCanvas(ctx, canvasRef.width, canvasRef.height);
+      controller.render();
+    }
+    return () => controller.destroy();
+  });
+
+  // 监听 items 变化
+  $effect(() => {
+    controller.setItems(items);
+    controller.render();
+  });
+</script>
+
+<canvas
+  bind:this={canvasRef}
+  width={800}
+  height={600}
+  onmousedown={(e) => {
+    const rect = canvasRef.getBoundingClientRect();
+    controller.handleMouseDown(e.clientX - rect.left, e.clientY - rect.top);
+    controller.render();
+  }}
+  onmousemove={(e) => {
+    const rect = canvasRef.getBoundingClientRect();
+    controller.handleMouseMove(e.clientX - rect.left, e.clientY - rect.top);
+  }}
+  onmouseup={() => {
+    controller.handleMouseUp();
+    controller.render();
+  }}
+/>
+```
+
+### React 集成
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+import { TextController, type TextItem } from './text-controller';
+
+function CanvasTextEditor() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const controllerRef = useRef<TextController | null>(null);
+  const [items, setItems] = useState<TextItem[]>([
+    { id: 1, text: 'Hello', position: { x: 10, y: 10 } }
+  ]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 创建控制器
+    const controller = new TextController({
+      items,
+      onItemsChange: setItems
+    });
+
+    controller.setCanvas(ctx, canvas.width, canvas.height);
+    controller.render();
+    controllerRef.current = controller;
+
+    return () => controller.destroy();
+  }, []);
+
+  // 当 items 变化时更新
+  useEffect(() => {
+    if (controllerRef.current) {
+      controllerRef.current.setItems(items);
+      controllerRef.current.render();
+    }
+  }, [items]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !controllerRef.current) return;
+
+    const rect = canvas.getBoundingClientRect();
+    controllerRef.current.handleMouseDown(
+      e.clientX - rect.left,
+      e.clientY - rect.top
+    );
+    controllerRef.current.render();
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !controllerRef.current) return;
+
+    const rect = canvas.getBoundingClientRect();
+    controllerRef.current.handleMouseMove(
+      e.clientX - rect.left,
+      e.clientY - rect.top
+    );
+  };
+
+  const handleMouseUp = () => {
+    if (controllerRef.current) {
+      controllerRef.current.handleMouseUp();
+      controllerRef.current.render();
+    }
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={800}
+      height={600}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      style={{ cursor: controllerRef.current?.getCursorStyle() || 'default' }}
+    />
+  );
+}
+```
+
+### Vue 集成
+
+```vue
+<template>
+  <canvas
+    ref="canvasRef"
+    :width="800"
+    :height="600"
+    :style="{ cursor: cursorStyle }"
+    @mousedown="handleMouseDown"
+    @mousemove="handleMouseMove"
+    @mouseup="handleMouseUp"
+  />
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { TextController, type TextItem } from './text-controller';
+
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+const cursorStyle = ref('default');
+const items = ref<TextItem[]>([
+  { id: 1, text: 'Hello', position: { x: 10, y: 10 } }
+]);
+
+let controller: TextController | null = null;
+
+onMounted(() => {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  controller = new TextController({
+    items: items.value,
+    onItemsChange: (newItems) => {
+      items.value = newItems;
+    }
+  });
+
+  controller.setCanvas(ctx, canvas.width, canvas.height);
+  controller.render();
+});
+
+onUnmounted(() => {
+  controller?.destroy();
+});
+
+// 监听 items 变化
+watch(items, (newItems) => {
+  if (controller) {
+    controller.setItems(newItems);
+    controller.render();
+  }
+}, { deep: true });
+
+// 监听光标样式变化
+watch(() => controller?.getCursorStyle(), (style) => {
+  if (style) cursorStyle.value = style;
+});
+
+const handleMouseDown = (e: MouseEvent) => {
+  const canvas = canvasRef.value;
+  if (!canvas || !controller) return;
+
+  const rect = canvas.getBoundingClientRect();
+  controller.handleMouseDown(e.clientX - rect.left, e.clientY - rect.top);
+  controller.render();
+  cursorStyle.value = controller.getCursorStyle();
+};
+
+const handleMouseMove = (e: MouseEvent) => {
+  const canvas = canvasRef.value;
+  if (!canvas || !controller) return;
+
+  const rect = canvas.getBoundingClientRect();
+  controller.handleMouseMove(e.clientX - rect.left, e.clientY - rect.top);
+  cursorStyle.value = controller.getCursorStyle();
+};
+
+const handleMouseUp = () => {
+  if (controller) {
+    controller.handleMouseUp();
+    controller.render();
+    cursorStyle.value = controller.getCursorStyle();
+  }
+};
+</script>
+```
+
+## 最佳实践
+
+### 1. 性能优化
+
+#### 避免频繁渲染
+
+拖拽过程中，`handleMouseMove` 会频繁触发。控制器已经内置了优化，只在必要时调用 `render()`：
+
+```typescript
+// ✅ 好的做法：只在 mousemove 时调用 handleMouseMove，不调用 render
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  controller.handleMouseMove(e.clientX - rect.left, e.clientY - rect.top);
+  // render() 会在内部自动调用
+});
+
+// ❌ 不好的做法：每次都手动调用 render
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  controller.handleMouseMove(e.clientX - rect.left, e.clientY - rect.top);
+  controller.render(); // 不需要，handleMouseMove 内部已经处理
+});
+```
+
+#### 使用 requestAnimationFrame
+
+对于复杂场景，可以使用 `requestAnimationFrame` 来节流渲染：
+
+```typescript
+let rafId: number | null = null;
+
+canvas.addEventListener('mousemove', (e) => {
+  if (rafId !== null) return;
+
+  rafId = requestAnimationFrame(() => {
+    const rect = canvas.getBoundingClientRect();
+    controller.handleMouseMove(e.clientX - rect.left, e.clientY - rect.top);
+    rafId = null;
+  });
+});
+```
+
+### 2. 内存管理
+
+#### 及时销毁控制器
+
+在组件卸载时，务必调用 `destroy()` 方法：
+
+```typescript
+// React
+useEffect(() => {
+  const controller = new TextController({ /* ... */ });
+  return () => controller.destroy(); // 清理资源
+}, []);
+
+// Vue
+onUnmounted(() => {
+  controller?.destroy();
+});
+
+// Svelte
+onMount(() => {
+  const controller = new TextController({ /* ... */ });
+  return () => controller.destroy();
+});
+```
+
+### 3. 坐标转换
+
+#### 正确处理 Canvas 坐标
+
+始终使用 `getBoundingClientRect()` 来转换鼠标坐标：
+
+```typescript
+const handleMouseEvent = (e: MouseEvent) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  // 使用转换后的坐标
+  controller.handleMouseDown(x, y);
+};
+```
+
+#### 处理高 DPI 屏幕
+
+对于高 DPI 屏幕，需要调整 Canvas 的分辨率：
+
+```typescript
+const dpr = window.devicePixelRatio || 1;
+canvas.width = width * dpr;
+canvas.height = height * dpr;
+canvas.style.width = `${width}px`;
+canvas.style.height = `${height}px`;
+
+const ctx = canvas.getContext('2d');
+ctx.scale(dpr, dpr);
+
+controller.setCanvas(ctx, width, height); // 使用逻辑尺寸
+```
+
+### 4. 状态管理
+
+#### 使用受控模式
+
+控制器设计为受控组件，外部状态是唯一的数据源：
+
+```typescript
+// ✅ 好的做法：外部状态驱动
+const [items, setItems] = useState<TextItem[]>([]);
+
+const controller = new TextController({
+  items,
+  onItemsChange: setItems  // 拖拽结束时更新外部状态
+});
+
+// 当外部状态变化时，同步到控制器
+useEffect(() => {
+  controller.setItems(items);
+  controller.render();
+}, [items]);
+```
+
+## 常见问题
+
+### Q: 为什么拖拽时文本位置不更新？
+
+**A:** 确保在 `mouseup` 事件中调用了 `handleMouseUp()`。控制器只在拖拽结束时通过 `onItemsChange` 回调通知外部：
+
+```typescript
+canvas.addEventListener('mouseup', () => {
+  controller.handleMouseUp();  // 必须调用
+  controller.render();
+});
+```
+
+### Q: 如何处理 Canvas 尺寸变化？
+
+**A:** 当 Canvas 尺寸变化时，需要重新设置 Canvas 上下文：
+
+```typescript
+window.addEventListener('resize', () => {
+  const newWidth = canvas.offsetWidth;
+  const newHeight = canvas.offsetHeight;
+
+  canvas.width = newWidth;
+  canvas.height = newHeight;
+
+  const ctx = canvas.getContext('2d');
+  controller.setCanvas(ctx, newWidth, newHeight);
+  controller.render();
+});
+```
+
+### Q: 光标样式不更新怎么办？
+
+**A:** 需要在鼠标事件中手动更新光标样式：
+
+```typescript
+canvas.addEventListener('mousemove', (e) => {
+  controller.handleMouseMove(x, y);
+  canvas.style.cursor = controller.getCursorStyle();  // 更新光标
+});
+```
+
+### Q: 如何实现文本项的删除功能？
+
+**A:** 通过过滤 items 数组来删除：
+
+```typescript
+function deleteItem(id: string | number) {
+  const newItems = items.filter(item => item.id !== id);
+  controller.setItems(newItems);
+  controller.render();
+  onItemsChange?.(newItems);  // 通知外部
+}
+```
+
+### Q: 如何实现撤销/重做功能？
+
+**A:** 维护一个历史记录栈：
+
+```typescript
+const history: TextItem[][] = [];
+let historyIndex = -1;
+
+function saveHistory(items: TextItem[]) {
+  history.splice(historyIndex + 1);
+  history.push([...items]);
+  historyIndex++;
+}
+
+function undo() {
+  if (historyIndex > 0) {
+    historyIndex--;
+    const items = history[historyIndex];
+    controller.setItems(items);
+    controller.render();
+  }
+}
+
+function redo() {
+  if (historyIndex < history.length - 1) {
+    historyIndex++;
+    const items = history[historyIndex];
+    controller.setItems(items);
+    controller.render();
+  }
+}
+```
+
+## 高级用法
+
+### 1. 自定义渲染样式
+
+虽然控制器内部处理渲染，但你可以通过继承来自定义样式：
+
+```typescript
+class CustomTextController extends TextController {
+  // 重写绘制方法以自定义样式
+  protected drawTextItem(text: string, position: Point, isSelected: boolean): void {
+    if (!this.ctx) return;
+
+    // 自定义字体
+    this.ctx.font = 'bold 16px Arial';
+
+    // 自定义阴影效果
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    this.ctx.shadowBlur = 4;
+    this.ctx.shadowOffsetX = 2;
+    this.ctx.shadowOffsetY = 2;
+
+    // 调用父类方法或完全自定义
+    super.drawTextItem(text, position, isSelected);
+  }
+}
+```
+
+### 2. 坐标归一化
+
+在实际应用中，通常需要将像素坐标转换为归一化坐标（0-1 范围）以适应不同尺寸：
+
+```typescript
+// 归一化坐标（保存到后端）
+function normalizePosition(position: Point, size: Size): Point {
+  return {
+    x: position.x / size.width,
+    y: position.y / size.height
+  };
+}
+
+// 反归一化（从后端加载）
+function denormalizePosition(normalized: Point, size: Size): Point {
+  return {
+    x: normalized.x * size.width,
+    y: normalized.y * size.height
+  };
+}
+
+// 使用示例
+const controller = new TextController({
+  items: backendItems.map(item => ({
+    ...item,
+    position: denormalizePosition(item.position, canvasSize)
+  })),
+  onItemsChange: (items) => {
+    const normalizedItems = items.map(item => ({
+      ...item,
+      position: normalizePosition(item.position, canvasSize)
+    }));
+    saveToBackend(normalizedItems);
+  }
+});
+```
+
+## 故障排查
+
+### 文本不显示
+
+**可能原因：**
+1. Canvas 上下文未正确设置
+2. 文本颜色与背景色相同
+3. 文本位置超出 Canvas 边界
+
+**解决方法：**
+```typescript
+// 检查 Canvas 上下文
+const ctx = canvas.getContext('2d');
+console.log('Canvas context:', ctx);
+
+// 检查文本项
+console.log('Items:', controller.getItems());
+
+// 检查颜色
+controller.setColor([255, 0, 0, 1]); // 设置为红色测试
+```
+
+### 拖拽不流畅
+
+**可能原因：**
+1. 频繁的状态更新
+2. 未使用 requestAnimationFrame
+
+**解决方法：**
+```typescript
+// 使用节流
+let rafId: number | null = null;
+canvas.addEventListener('mousemove', (e) => {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    controller.handleMouseMove(x, y);
+    rafId = null;
+  });
+});
+```
+
+### 内存泄漏
+
+**可能原因：**
+- 未调用 `destroy()` 方法
+- 事件监听器未清理
+
+**解决方法：**
+```typescript
+// 确保清理资源
+useEffect(() => {
+  const controller = new TextController({ /* ... */ });
+
+  return () => {
+    controller.destroy();  // 必须调用
+  };
+}, []);
+```
