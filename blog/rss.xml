@@ -4,10 +4,77 @@
         <title>Chiyu Blog</title>
         <link>https://imehc.github.io/blog</link>
         <description>Chiyu Blog</description>
-        <lastBuildDate>Mon, 22 Dec 2025 00:00:00 GMT</lastBuildDate>
+        <lastBuildDate>Tue, 20 Jan 2026 00:00:00 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>https://github.com/jpmonette/feed</generator>
         <language>zh-Hans</language>
+        <item>
+            <title><![CDATA[本地文件服务]]></title>
+            <link>https://imehc.github.io/blog/本地文件服务</link>
+            <guid>https://imehc.github.io/blog/本地文件服务</guid>
+            <pubDate>Tue, 20 Jan 2026 00:00:00 GMT</pubDate>
+            <description><![CDATA[平时在本地调试静态页面、下载文件、移动端真机联调（同一局域网）时，经常需要“临时起一个静态文件服务器”。这里整理两种最常用方式：]]></description>
+            <content:encoded><![CDATA[<p>平时在本地调试静态页面、下载文件、移动端真机联调（同一局域网）时，经常需要“临时起一个静态文件服务器”。这里整理两种最常用方式：</p>
+<ul>
+<li class="">Python 内置模块：<code>http.server</code></li>
+<li class="">Node.js 第三方工具：<code>http-server</code></li>
+</ul>
+<h2 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="pythonhttpserver">Python：<code>http.server</code><a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#pythonhttpserver" class="hash-link" aria-label="pythonhttpserver的直接链接" title="pythonhttpserver的直接链接" translate="no">​</a></h2>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="1-在某个目录下启动">1) 在某个目录下启动<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#1-%E5%9C%A8%E6%9F%90%E4%B8%AA%E7%9B%AE%E5%BD%95%E4%B8%8B%E5%90%AF%E5%8A%A8" class="hash-link" aria-label="1) 在某个目录下启动的直接链接" title="1) 在某个目录下启动的直接链接" translate="no">​</a></h3>
+<p>进入要分享的目录（静态资源所在目录）：</p>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">cd /path/to/your/static</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">python -m http.server</span><br></span></code></pre></div></div>
+<p>默认：</p>
+<ul>
+<li class="">监听端口：<code>8000</code></li>
+<li class="">绑定地址：<code>0.0.0.0</code>（在很多环境下等价于允许外部访问；具体取决于系统与防火墙设置）</li>
+</ul>
+<p>访问：</p>
+<ul>
+<li class="">本机：<code>http://127.0.0.1:8000/</code></li>
+<li class="">局域网：<code>http://&lt;你的局域网IP&gt;:8000/</code></li>
+</ul>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="2-指定端口">2) 指定端口<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#2-%E6%8C%87%E5%AE%9A%E7%AB%AF%E5%8F%A3" class="hash-link" aria-label="2) 指定端口的直接链接" title="2) 指定端口的直接链接" translate="no">​</a></h3>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">python -m http.server 8080</span><br></span></code></pre></div></div>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="3-指定绑定地址推荐用于跨设备访问">3) 指定绑定地址（推荐用于跨设备访问）<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#3-%E6%8C%87%E5%AE%9A%E7%BB%91%E5%AE%9A%E5%9C%B0%E5%9D%80%E6%8E%A8%E8%8D%90%E7%94%A8%E4%BA%8E%E8%B7%A8%E8%AE%BE%E5%A4%87%E8%AE%BF%E9%97%AE" class="hash-link" aria-label="3) 指定绑定地址（推荐用于跨设备访问）的直接链接" title="3) 指定绑定地址（推荐用于跨设备访问）的直接链接" translate="no">​</a></h3>
+<p>如果你要让同一局域网的手机/其他电脑访问，建议显式绑定到 <code>0.0.0.0</code>：</p>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">python -m http.server 8000 --bind 0.0.0.0</span><br></span></code></pre></div></div>
+<p>也可以仅绑定到本机回环（更安全，只允许本机访问）：</p>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">python -m http.server 8000 --bind 127.0.0.1</span><br></span></code></pre></div></div>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="4-指定服务目录">4) 指定服务目录<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#4-%E6%8C%87%E5%AE%9A%E6%9C%8D%E5%8A%A1%E7%9B%AE%E5%BD%95" class="hash-link" aria-label="4) 指定服务目录的直接链接" title="4) 指定服务目录的直接链接" translate="no">​</a></h3>
+<p>Python 3.7+ 支持 <code>--directory</code>：</p>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">python -m http.server 8000 --directory /path/to/your/static</span><br></span></code></pre></div></div>
+<h2 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="nodejshttp-server">Node.js：<code>http-server</code><a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#nodejshttp-server" class="hash-link" aria-label="nodejshttp-server的直接链接" title="nodejshttp-server的直接链接" translate="no">​</a></h2>
+<p><code>http-server</code> 是一个非常常用的静态文件服务器 CLI 工具，功能比 <code>python -m http.server</code> 更“贴近前端场景”，例如：更方便配置 CORS、SPA fallback、禁用缓存等。</p>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="1-一次性使用推荐">1) 一次性使用（推荐）<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#1-%E4%B8%80%E6%AC%A1%E6%80%A7%E4%BD%BF%E7%94%A8%E6%8E%A8%E8%8D%90" class="hash-link" aria-label="1) 一次性使用（推荐）的直接链接" title="1) 一次性使用（推荐）的直接链接" translate="no">​</a></h3>
+<p>用 <code>npx</code> 不需要全局安装：</p>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">npx http-server .</span><br></span></code></pre></div></div>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="2-全局安装">2) 全局安装<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#2-%E5%85%A8%E5%B1%80%E5%AE%89%E8%A3%85" class="hash-link" aria-label="2) 全局安装的直接链接" title="2) 全局安装的直接链接" translate="no">​</a></h3>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">npm i -g http-server</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># 或 pnpm</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">pnpm add -g http-server</span><br></span></code></pre></div></div>
+<p>安装后在目标目录运行：</p>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">http-server .</span><br></span></code></pre></div></div>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="3-常用参数">3) 常用参数<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#3-%E5%B8%B8%E7%94%A8%E5%8F%82%E6%95%B0" class="hash-link" aria-label="3) 常用参数的直接链接" title="3) 常用参数的直接链接" translate="no">​</a></h3>
+<h4 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="指定端口">指定端口<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#%E6%8C%87%E5%AE%9A%E7%AB%AF%E5%8F%A3" class="hash-link" aria-label="指定端口的直接链接" title="指定端口的直接链接" translate="no">​</a></h4>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">http-server . -p 8080</span><br></span></code></pre></div></div>
+<h4 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="指定地址">指定地址<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#%E6%8C%87%E5%AE%9A%E5%9C%B0%E5%9D%80" class="hash-link" aria-label="指定地址的直接链接" title="指定地址的直接链接" translate="no">​</a></h4>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">http-server . -a 0.0.0.0 -p 8080</span><br></span></code></pre></div></div>
+<h4 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="禁用缓存">禁用缓存<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#%E7%A6%81%E7%94%A8%E7%BC%93%E5%AD%98" class="hash-link" aria-label="禁用缓存的直接链接" title="禁用缓存的直接链接" translate="no">​</a></h4>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">http-server . -c-1</span><br></span></code></pre></div></div>
+<blockquote>
+<p><code>-c</code> 用于设置缓存时间（秒）。<code>-c-1</code> 表示禁用缓存。</p>
+</blockquote>
+<h4 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="启用-cors">启用 CORS<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#%E5%90%AF%E7%94%A8-cors" class="hash-link" aria-label="启用 CORS的直接链接" title="启用 CORS的直接链接" translate="no">​</a></h4>
+<p>当前端页面要请求别的域（或你在本地用文件服务模拟接口）时经常需要：</p>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">http-server . --cors</span><br></span></code></pre></div></div>
+<h4 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="自动打开浏览器">自动打开浏览器<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#%E8%87%AA%E5%8A%A8%E6%89%93%E5%BC%80%E6%B5%8F%E8%A7%88%E5%99%A8" class="hash-link" aria-label="自动打开浏览器的直接链接" title="自动打开浏览器的直接链接" translate="no">​</a></h4>
+<div class="language-bash codeBlockContainer_COix theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_bmw2"><pre tabindex="0" class="prism-code language-bash codeBlock_V71J thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_Xh1n"><span class="token-line" style="color:#393A34"><span class="token plain">http-server . -o</span><br></span></code></pre></div></div>
+<h3 class="anchor anchorTargetHideOnScrollNavbar_lDga" id="参考资料">参考资料<a href="https://imehc.github.io/blog/%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99" class="hash-link" aria-label="参考资料的直接链接" title="参考资料的直接链接" translate="no">​</a></h3>
+<ul>
+<li class=""><a href="https://docs.python.org/3/library/http.server.html" target="_blank" rel="noopener noreferrer" class="">Python <code>http.server</code> 官方文档</a></li>
+<li class=""><a href="https://github.com/http-party/http-server" target="_blank" rel="noopener noreferrer" class="">Node <code>http.server</code> 官方文档</a></li>
+</ul>]]></content:encoded>
+            <category>Python</category>
+            <category>JavaScript</category>
+        </item>
         <item>
             <title><![CDATA[WebRTC 视频流服务端DEMO]]></title>
             <link>https://imehc.github.io/blog/WebRTC服务端DEMO</link>
