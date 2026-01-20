@@ -7,7 +7,7 @@ export default function GiscusComments() {
   return (
     <div style={{ marginTop: '3rem' }}>
       <Giscus
-        repo="imehc/three-dimensional"
+        repo="imehc/imehc.github.io"
         repoId="R_kgDOKMx3qg"
         category="General"
         categoryId="DIC_kwDOKMx3qs4Cz8hm"
