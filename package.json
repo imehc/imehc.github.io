@@ -39,7 +39,7 @@
 		"@theatre/core": "^0.7.2",
 		"@theatre/r3f": "^0.7.2",
 		"@theatre/studio": "^0.7.2",
-		"@turf/turf": "^7.3.2",
+		"@turf/turf": "^7.3.3",
 		"@tweenjs/tween.js": "^25.0.0",
 		"cesium": "^1.137.0",
 		"cesium-navigation-es6": "^3.0.9",
