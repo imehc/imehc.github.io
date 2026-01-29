@@ -1,0 +1,33 @@
+{
+  "name": "visualize-dashboard",
+  "version": "0.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/d3-geo": "^3.1.0",
+    "@types/geojson": "^7946.0.16",
+    "@types/three": "^0.182.0",
+    "solid-devtools": "^0.34.3",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.4",
+    "vite-plugin-solid": "^2.11.8"
+  },
+  "dependencies": {
+    "autofit.js": "^3.2.8",
+    "d3-geo": "^3.1.1",
+    "gsap": "^3.14.2",
+    "mitt": "^3.0.1",
+    "solid-js": "^1.9.9",
+    "three": "^0.182.0",
+    "three.interactive": "^1.8.0"
+  }
+}
