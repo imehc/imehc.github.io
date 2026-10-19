@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/imehc/imehc.github.io/compare/v1.2.0...v1.2.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **ci:** 改用 cp -al 预填充硬链接，避免 rsync --link-dest 不生效导致磁盘翻倍 ([52c9556](https://github.com/imehc/imehc.github.io/commit/52c95568378cd59e2eb08cc80ef1c0d6af55f66a))
+
 # [1.2.0](https://github.com/imehc/imehc.github.io/compare/v1.1.2...v1.2.0) (2026-07-24)
 
 
