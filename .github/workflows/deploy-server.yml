@@ -1,0 +1,251 @@
+# 部署到自有服务器（华为云 ECS，2C1G 亦可）
+#
+# 为什么在 CI 构建而不是在服务器构建：
+#   Docusaurus + rspack 的构建峰值内存约 2~3 GB，1 GiB 的机器会 OOM。
+#   所以由 GitHub Actions 构建，服务器只负责接收静态文件和提供 Nginx 服务。
+#
+# 触发方式：
+#   1. "Build and Release" 工作流在 main 分支成功后自动触发（与 GitHub Pages 部署并行）
+#   2. 在 Actions 页面手动触发（workflow_dispatch）
+#
+# 需要配置（仓库 Settings → Secrets and variables → Actions）：
+#   Secrets:
+#     SSH_HOST            服务器公网 IP 或域名（必填）
+#     SSH_PRIVATE_KEY     部署私钥全文（必填，仅支持密钥认证）
+#     CESIUM_ACCESS_TOKEN Cesium ion Token（可选）
+#   Variables:
+#     SSH_USER            登录用户名，默认 deploy
+#     SSH_PORT            SSH 端口，默认 22
+#     DEPLOY_PATH         服务器上的部署根目录，默认 /var/www/imehc
+#     SITE_URL            站点对外地址，例如 https://example.com（可选）
+#
+# 服务器目录结构：
+#   $DEPLOY_PATH/
+#     releases/<commit-sha>/   每次部署的构建产物（未变化的文件硬链接到上一版，几乎不占额外空间）
+#     current -> releases/...  原子切换的软链接，Nginx root 指向这里
+#
+# 传输优化：
+#   - --checksum：每次构建产物的 mtime 都会变，只比 mtime 会导致全量重传；
+#     改用内容校验和比较，未变化的文件不传输。
+#   - --link-dest：未变化的文件直接硬链接到上一版本，保留 5 个版本也只占约一份的空间。
+#   - --partial + 重试：跨境链路较慢时支持断点续传。
+#
+# 详细准备步骤见仓库根目录 DEPLOY_SERVER.md。
+
+on:
+  workflow_run:
+    workflows: ["Build and Release"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+name: Deploy to Server
+
+# 同一时间只允许一个部署任务，避免并发切换目录
+# 不用 cancel-in-progress：中断 rsync 可能留下不完整的发布目录
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ vars.SSH_USER || 'deploy' }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/var/www/imehc' }}
+      SITE_URL: ${{ vars.SITE_URL }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      # 可选：服务器主机指纹（ssh-keyscan 输出），配置后会校验，防止中间人攻击
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      CESIUM_ACCESS_TOKEN: ${{ secrets.CESIUM_ACCESS_TOKEN }}
+      # 部署触发构建时的那次提交，保证发布目录名与代码一致
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6.0.10
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Deploy to server
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # ---------- 校验必填配置 ----------
+          : "${SSH_HOST:?缺少 Secrets.SSH_HOST（服务器公网 IP 或域名）}"
+          : "${SSH_USER:?缺少 Variables.SSH_USER（登录用户名）}"
+          : "${SSH_PRIVATE_KEY:?缺少 Secrets.SSH_PRIVATE_KEY（部署私钥）}"
+
+          # ---------- 准备 SSH 密钥 ----------
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+
+          # 私钥格式常见问题：粘贴时丢了换行或首尾行
+          if ! ssh-keygen -y -f "$HOME/.ssh/deploy_key" > /dev/null 2>&1; then
+            echo "::error::SSH_PRIVATE_KEY 不是有效的私钥，请粘贴完整的 -----BEGIN ... KEY----- / -----END ... KEY----- 内容"
+            exit 1
+          fi
+
+          SSH_OPTS=(
+            -p "$SSH_PORT"
+            -i "$HOME/.ssh/deploy_key"
+            -o IdentitiesOnly=yes
+            -o ServerAliveInterval=30
+            -o ConnectTimeout=20
+          )
+
+          # 可选：固定服务器主机指纹，防止中间人（首次连接时仍建议先核对一次）
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+            chmod 600 "$HOME/.ssh/known_hosts"
+            SSH_OPTS+=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          else
+            SSH_OPTS+=(-o StrictHostKeyChecking=accept-new)
+          fi
+
+          RSYNC_RSH="ssh -p $SSH_PORT -i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o ServerAliveInterval=30 -o ConnectTimeout=20"
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            RSYNC_RSH="$RSYNC_RSH -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+          else
+            RSYNC_RSH="$RSYNC_RSH -o StrictHostKeyChecking=accept-new"
+          fi
+
+          ssh_run() {
+            ssh "${SSH_OPTS[@]}" "$SSH_USER@$SSH_HOST" "$@"
+          }
+
+          # ---------- 确定本次发布目录与硬链接基准 ----------
+          # current 是软链接；首次部署时不存在，test -d 会返回非 0
+          # 用 readlink -f 取真实路径，避免 DEPLOY_PATH 本身含软链接时比较失败
+          RELEASES_DIR="$(ssh_run "mkdir -p '$DEPLOY_PATH/releases' && readlink -f '$DEPLOY_PATH/releases'")"
+          CURRENT_TARGET=""
+          if ssh_run "test -d '$DEPLOY_PATH/current/'"; then
+            CURRENT_TARGET="$(ssh_run "readlink -f '$DEPLOY_PATH/current'")"
+          fi
+
+          RELEASE="$RELEASES_DIR/$TARGET_SHA"
+          # 重新运行同一个 commit 时，不覆盖正在服务的目录（避免在线文件被边传边改）
+          if [ -n "$CURRENT_TARGET" ] && [ "$CURRENT_TARGET" = "$RELEASE" ]; then
+            RELEASE="$RELEASE-r$GITHUB_RUN_ID"
+          fi
+
+          echo "发布目录: $SSH_USER@$SSH_HOST:$RELEASE"
+          ssh_run "mkdir -p '$RELEASE' && test -w '$RELEASE'" || {
+            echo "::error::无法写入 $RELEASE，请检查 DEPLOY_PATH 是否存在且 $SSH_USER 有权限"
+            exit 1
+          }
+          LINK_DEST_ARGS=()
+          if [ -n "$CURRENT_TARGET" ] && [ "$CURRENT_TARGET" != "$RELEASE" ]; then
+            echo "硬链接基准: $CURRENT_TARGET"
+            LINK_DEST_ARGS=(--link-dest="$CURRENT_TARGET/")
+          else
+            echo "未找到可复用的上一版本，本次为全量上传"
+          fi
+
+          # ---------- 同步构建产物（校验和比较 + 断点续传 + 失败重试）----------
+          for attempt in 1 2 3; do
+            echo "::group::rsync 第 $attempt 次"
+            if rsync -az --checksum --delete --partial --timeout=180 --human-readable \
+              ${LINK_DEST_ARGS[@]+"${LINK_DEST_ARGS[@]}"} \
+              -e "$RSYNC_RSH" \
+              build/ "$SSH_USER@$SSH_HOST:$RELEASE/"; then
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::rsync 连续失败 3 次，部署中止（线上仍是上一版本，未受影响）"
+              exit 1
+            fi
+            echo "rsync 失败，10 秒后重试（已传输部分会续传）"
+            sleep 10
+          done
+
+          # ---------- 标记部署时间（用于清理旧版本排序）----------
+          # 不能用目录 mtime：rsync -a 会把源目录 mtime 一起复制，多个版本 mtime 会相同
+          ssh_run "date +%s > '$RELEASE/.deployed_at'"
+          ssh_run "bash -s -- '$RELEASE' '$DEPLOY_PATH'" <<'REMOTE'
+          set -euo pipefail
+          RELEASE="$1"
+          DEPLOY_PATH="$2"
+
+          # 先建临时链接再 rename，切换瞬间不会出现 404
+          ln -sfn "$RELEASE" "$DEPLOY_PATH/.current.tmp"
+          if mv --help 2>/dev/null | grep -q -- ' -T'; then
+            # GNU coreutils：把软链接本身覆盖到 current，而不是移动进目标目录
+            mv -Tf "$DEPLOY_PATH/.current.tmp" "$DEPLOY_PATH/current"
+          else
+            ln -sfn "$RELEASE" "$DEPLOY_PATH/current"
+            rm -f "$DEPLOY_PATH/.current.tmp"
+          fi
+
+          cd "$(readlink -f "$DEPLOY_PATH/releases")"
+          CURRENT_TARGET="$(readlink -f "$DEPLOY_PATH/current" 2>/dev/null || readlink "$DEPLOY_PATH/current")"
+
+          # 按 .deployed_at 排序保留最近 5 个版本，但绝不删除 current 指向的那个
+          # （目录 mtime 不可靠：rsync -a 会把源 mtime 一起复制过来）
+          KEEP=5
+          SORTED="$(
+            for d in */; do
+              d="${d%/}"
+              [ -f "$d/.deployed_at" ] || continue
+              printf '%s %s\n' "$(cat "$d/.deployed_at")" "$d"
+            done | sort -rn | awk -v k="$KEEP" 'NR > k { print $2 }'
+          )"
+          for dir in $SORTED; do
+            abs="$PWD/$dir"
+            [ "$abs" = "$CURRENT_TARGET" ] && continue
+            rm -rf "$abs"
+          done
+          echo "已切换到: $(readlink "$DEPLOY_PATH/current")"
+          REMOTE
+
+      - name: Health check
+        if: ${{ vars.SITE_URL != '' }}
+        shell: bash
+        run: |
+          echo "检查站点: $SITE_URL"
+          curl -fsS --retry 5 --retry-delay 5 --max-time 20 "$SITE_URL" > /dev/null

@@ -16,7 +16,8 @@ const config: Config = {
 	},
 
 	// Set the production url of your site here
-	url: "https://imehc.github.io",
+	// 可通过环境变量覆盖，便于部署到自有服务器；未设置时沿用 GitHub Pages 地址
+	url: (process.env.SITE_URL || "https://imehc.github.io").replace(/\/+$/, ""),
 	// Set the /<baseUrl>/ pathname under which your site is served
 	// For GitHub pages deployment, it is often '/<projectName>/'
 	baseUrl: "/",
