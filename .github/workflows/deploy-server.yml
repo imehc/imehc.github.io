@@ -32,7 +32,7 @@
 #     只按 size+mtime 判断，会导致磁盘成倍增长，故不采用）。
 #   - --partial + 重试：跨境链路较慢时支持断点续传。
 #
-# 详细准备步骤见仓库根目录 DEPLOY_SERVER.md。
+# 详细准备步骤见博客：blog/从零部署静态网站到华为云ECS.md
 
 on:
   workflow_run:

@@ -11,4 +11,4 @@
 ## 部署
 
 - GitHub Pages：`.github/workflows/deploy-pages.yml`（自动）
-- 自有服务器（华为云 ECS）：`.github/workflows/deploy-server.yml`，配置与服务器准备见 [DEPLOY_SERVER.md](./DEPLOY_SERVER.md)
+- 自有服务器（华为云 ECS）：`.github/workflows/deploy-server.yml`，配置与服务器准备见 [从零部署静态网站到华为云 ECS](./blog/从零部署静态网站到华为云ECS.md)
