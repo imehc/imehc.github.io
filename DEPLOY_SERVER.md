@@ -383,7 +383,8 @@ server {
     }
 
     location / {
-        try_files $uri $uri/ $uri.html /404.html;
+        # =404 让不存在的路径返回真正的 404 状态码，再由 error_page 渲染 404.html
+        try_files $uri $uri/ $uri.html =404;
     }
 
     # 带 hash 的静态资源可以长期缓存（文本类，走 gzip）
