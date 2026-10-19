@@ -27,7 +27,9 @@
 # 传输优化：
 #   - --checksum：每次构建产物的 mtime 都会变，只比 mtime 会导致全量重传；
 #     改用内容校验和比较，未变化的文件不传输。
-#   - --link-dest：未变化的文件直接硬链接到上一版本，保留 5 个版本也只占约一份的空间。
+#   - 部署前先在服务器上 cp -al 上一版本，未变化的文件直接共享 inode，
+#     保留 5 个版本也只占约一份的空间（rsync 的 --link-dest 不认 --checksum，
+#     只按 size+mtime 判断，会导致磁盘成倍增长，故不采用）。
 #   - --partial + 重试：跨境链路较慢时支持断点续传。
 #
 # 详细准备步骤见仓库根目录 DEPLOY_SERVER.md。
@@ -173,23 +175,38 @@ jobs:
           fi
 
           echo "发布目录: $SSH_USER@$SSH_HOST:$RELEASE"
-          ssh_run "mkdir -p '$RELEASE' && test -w '$RELEASE'" || {
+          if [ -n "$CURRENT_TARGET" ] && [ "$CURRENT_TARGET" = "$RELEASE" ]; then
+            echo "::error::拒绝写入正在服务的目录 $RELEASE"
+            exit 1
+          fi
+
+          # 先把上一版本硬链接到新目录，再用 rsync --checksum 覆盖有变化的文件。
+          # 为什么不直接用 rsync --link-dest：rsync 的 --link-dest 只按 size+mtime 判断，
+          # 即使加了 --checksum 也不会硬链接（mtime 每次构建都变），磁盘会成倍增长。
+          # cp -al 后未变化的文件天然共享 inode；rsync 改文件时先写临时文件再 rename，
+          # 不会原地修改，因此上一版本（以及线上 current）不会被破坏。
+          if [ -n "$CURRENT_TARGET" ]; then
+            echo "硬链接基准: $CURRENT_TARGET"
+            ssh_run "rm -rf '$RELEASE' && mkdir -p '$RELEASE' && cp -al '$CURRENT_TARGET/.' '$RELEASE/'" || {
+              echo "::error::无法从上一版本创建硬链接，请检查磁盘空间和 $SSH_USER 的权限"
+              exit 1
+            }
+          else
+            echo "未找到可复用的上一版本，本次为全量上传"
+            ssh_run "rm -rf '$RELEASE' && mkdir -p '$RELEASE'" || {
+              echo "::error::无法创建发布目录 $RELEASE"
+              exit 1
+            }
+          fi
+          ssh_run "test -w '$RELEASE'" || {
             echo "::error::无法写入 $RELEASE，请检查 DEPLOY_PATH 是否存在且 $SSH_USER 有权限"
             exit 1
           }
-          LINK_DEST_ARGS=()
-          if [ -n "$CURRENT_TARGET" ] && [ "$CURRENT_TARGET" != "$RELEASE" ]; then
-            echo "硬链接基准: $CURRENT_TARGET"
-            LINK_DEST_ARGS=(--link-dest="$CURRENT_TARGET/")
-          else
-            echo "未找到可复用的上一版本，本次为全量上传"
-          fi
 
           # ---------- 同步构建产物（校验和比较 + 断点续传 + 失败重试）----------
           for attempt in 1 2 3; do
             echo "::group::rsync 第 $attempt 次"
             if rsync -az --checksum --delete --partial --timeout=180 --human-readable \
-              ${LINK_DEST_ARGS[@]+"${LINK_DEST_ARGS[@]}"} \
               -e "$RSYNC_RSH" \
               build/ "$SSH_USER@$SSH_HOST:$RELEASE/"; then
               echo "::endgroup::"
