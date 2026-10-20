@@ -1,3 +1,10 @@
+# Cesium 1.143+ 依赖的 @spz-loader/core@0.3.1 用“原始字节模板字符串”内联 SPZ wasm，
+# 经 rspack/SWC 压缩后会变成非法八进制转义（Octal escape sequences），导致浏览器
+# 解析 chunk 失败、所有 Cesium 示例白屏。0.3.0 使用 base64 内联，不受影响。
+# 上游 issue: https://github.com/CesiumGS/cesium/issues/13379
+overrides:
+  '@spz-loader/core': 0.3.0
+
 allowBuilds:
   '@swc/core': true
   core-js: true
