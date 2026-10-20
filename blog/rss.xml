@@ -9,7 +9,7 @@
         <generator>https://github.com/jpmonette/feed</generator>
         <language>zh-Hans</language>
         <item>
-            <title><![CDATA[拿到服务器之后：把静态网站部署到华为云 ECS]]></title>
+            <title><![CDATA[将静态网站部署到华为云 ECS]]></title>
             <link>https://imehc.github.io/blog/从零部署静态网站到华为云ECS</link>
             <guid>https://imehc.github.io/blog/从零部署静态网站到华为云ECS</guid>
             <pubDate>Mon, 19 Oct 2026 00:00:00 GMT</pubDate>

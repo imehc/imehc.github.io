@@ -8,7 +8,7 @@
     <subtitle>Chiyu Blog</subtitle>
     <icon>https://imehc.github.io/favicon.svg</icon>
     <entry>
-        <title type="html"><![CDATA[拿到服务器之后：把静态网站部署到华为云 ECS]]></title>
+        <title type="html"><![CDATA[将静态网站部署到华为云 ECS]]></title>
         <id>https://imehc.github.io/blog/从零部署静态网站到华为云ECS</id>
         <link href="https://imehc.github.io/blog/从零部署静态网站到华为云ECS"/>
         <updated>2026-10-19T00:00:00.000Z</updated>
