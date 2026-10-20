@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/imehc/imehc.github.io/compare/v1.2.1...v1.2.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** 固定 @spz-loader/core 至 0.3.0 修复 Cesium 示例白屏 ([b0f9556](https://github.com/imehc/imehc.github.io/commit/b0f9556057bb0e9e86939a848aebb41b24776e43)), closes [CesiumGS/cesium#13379](https://github.com/CesiumGS/cesium/issues/13379)
+
 ## [1.2.1](https://github.com/imehc/imehc.github.io/compare/v1.2.0...v1.2.1) (2026-10-19)
 
 
