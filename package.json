@@ -30,7 +30,7 @@
 		"@easyops-cn/docusaurus-search-local": "^0.55.3",
 		"@giscus/react": "^3.1.0",
 		"@mdx-js/react": "^3.1.1",
-		"@react-three/drei": "^10.7.7",
+		"@react-three/drei": "^10.7.9",
 		"@react-three/fiber": "^9.7.0",
 		"@react-three/postprocessing": "^3.2.0",
 		"@react-three/rapier": "^2.2.0",
