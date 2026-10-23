@@ -1,3 +1,0 @@
-import{f as e}from"./chunk-J4SK6SKL.js";var r=function(r){let s,t=r.name,a=r.message;s=e(t)&&e(a)?`${t}: ${a}`:r.toString();let o=r.stack;return e(o)&&(s+=`
-${o}`),s},s=function(e){async function s({data:t}){let a=[],o={id:t.id,result:void 0,error:void 0};self.CESIUM_BASE_URL=t.baseUrl;try{o.result=await e(t.parameters,a)}catch(e){e instanceof Error?o.error={name:e.name,message:e.message,stack:e.stack}:o.error=e}t.canTransferArrayBuffer||(a.length=0);try{postMessage(o,a)}catch(e){o.result=void 0,o.error=`postMessage failed with error: ${r(e)}
-  with responseMessage: ${JSON.stringify(o)}`,postMessage(o)}}return self.onmessage=s,self.onmessageerror=function(e){postMessage({id:e.data?.id,error:`postMessage failed with error: ${JSON.stringify(e)}`})},self};export{s as a};

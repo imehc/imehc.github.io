@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkanch=self.webpackChunkanch||[]).push([["9452"],{5146(e,t,n){n.r(t),n.d(t,{default:()=>u});var r=n(91987),s=n(98353),c=n(66532),h=n(72392);function u(){let e=(0,h.Ay)("/blog");return(0,r.jsxs)(r.Fragment,{children:[(0,r.jsx)(s.A,{children:(0,r.jsx)("meta",{httpEquiv:"refresh",content:`0; url=${e}`})}),(0,r.jsx)(c.rd,{to:e})]})}}}]);
