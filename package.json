@@ -90,7 +90,7 @@
 		"copy-webpack-plugin": "^14.0.0",
 		"cz-git": "^1.13.2",
 		"daisyui": "^5.7.50",
-		"dotenv": "^17.4.2",
+		"dotenv": "^18.0.9",
 		"husky": "^9.1.7",
 		"raw-loader": "^4.0.2",
 		"postcss": "^8.5.31",
