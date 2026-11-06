@@ -94,7 +94,7 @@
 		"husky": "^9.1.7",
 		"raw-loader": "^4.0.2",
 		"postcss": "^8.5.32",
-		"tailwindcss": "^4.3.2",
+		"tailwindcss": "^4.3.4",
 		"typescript": "~7.0.2"
 	},
 	"browserslist": {
