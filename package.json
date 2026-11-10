@@ -75,7 +75,7 @@
 		"@docusaurus/module-type-aliases": "3.10.2",
 		"@docusaurus/tsconfig": "3.10.2",
 		"@docusaurus/types": "3.10.2",
-		"@tailwindcss/postcss": "^4.3.2",
+		"@tailwindcss/postcss": "^4.3.5",
 		"@types/cesium-china__cesium-map": "^1.0.0",
 		"@types/d3": "^7.4.3",
 		"@types/dat.gui": "^0.7.13",
